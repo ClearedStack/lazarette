@@ -1,0 +1,22 @@
+{
+  "slug": "lazarette",
+  "name": "Lazarette",
+  "formerly": "cs-registry",
+  "earlierNames": [
+    "Stow"
+  ],
+  "kind": "control-plane",
+  "namespace": "clearedstack",
+  "responsibility": "Keeps built images inside the cluster, with recent versions ready for rollback.",
+  "interfaces": [
+    "Standard OCI registry API, inside the cluster only",
+    "Pushes from Keelworks's build jobs",
+    "Pulls by the cluster's container runtime when Shipkeeper deploys"
+  ],
+  "repository": "lazarette",
+  "image": "lazarette",
+  "dependsOn": [],
+  "memory": "64 MiB",
+  "version": "v0.1.0-draft",
+  "subTools": []
+}
