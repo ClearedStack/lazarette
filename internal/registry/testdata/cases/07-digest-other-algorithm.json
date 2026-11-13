@@ -1,0 +1,48 @@
+{
+  "rule": "A well-formed digest with an algorithm other than sha256 is valid and unfamiliar: E_NEEDS_SUBTOOL.",
+  "steps": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/blobs/sha512:a4abd4448c49562d828115d13a1fccea927f52b4d5459297f8b43e42da89238bc13626e43dcb38ddb082488927ec904fb42057443983e88585179d50551afe62"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Length": "154",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"UNSUPPORTED\",\"message\":\"digest uses an algorithm other than sha256, which is not handled\",\"detail\":{\"lazarette\":\"E_NEEDS_SUBTOOL\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps/example/blobs/uploads/?digest=sha512:a4abd4448c49562d828115d13a1fccea927f52b4d5459297f8b43e42da89238bc13626e43dcb38ddb082488927ec904fb42057443983e88585179d50551afe62",
+        "body": "x"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Length": "154",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"UNSUPPORTED\",\"message\":\"digest uses an algorithm other than sha256, which is not handled\",\"detail\":{\"lazarette\":\"E_NEEDS_SUBTOOL\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/manifests/sha512:a4abd4448c49562d828115d13a1fccea927f52b4d5459297f8b43e42da89238bc13626e43dcb38ddb082488927ec904fb42057443983e88585179d50551afe62"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Length": "154",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"UNSUPPORTED\",\"message\":\"digest uses an algorithm other than sha256, which is not handled\",\"detail\":{\"lazarette\":\"E_NEEDS_SUBTOOL\"}}]}\n"
+      }
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "architecture": "amd64",
+  "os": "linux",
+  "config": {
+    "Entrypoint": [
+      "/example/app"
+    ]
+  },
+  "rootfs": {
+    "type": "layers",
+    "diff_ids": [
+      "sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7"
+    ]
+  }
+}

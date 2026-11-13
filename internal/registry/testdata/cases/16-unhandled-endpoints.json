@@ -1,0 +1,151 @@
+{
+  "rule": "Endpoints and methods outside this milestone are valid and unfamiliar: E_NEEDS_SUBTOOL. Nothing is guessed.",
+  "steps": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/tags/list"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Length": "118",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"UNSUPPORTED\",\"message\":\"this endpoint is not handled\",\"detail\":{\"lazarette\":\"E_NEEDS_SUBTOOL\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/_catalog"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Length": "118",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"UNSUPPORTED\",\"message\":\"this endpoint is not handled\",\"detail\":{\"lazarette\":\"E_NEEDS_SUBTOOL\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/referrers/sha256:c70503b35fd76637bf5fb5723feac32b1f8e5c6dbcea5b7009152d7ee6e17d2c"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Length": "118",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"UNSUPPORTED\",\"message\":\"this endpoint is not handled\",\"detail\":{\"lazarette\":\"E_NEEDS_SUBTOOL\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "DELETE",
+        "path": "/v2/apps/example/manifests/sha256:c70503b35fd76637bf5fb5723feac32b1f8e5c6dbcea5b7009152d7ee6e17d2c"
+      },
+      "response": {
+        "status": 405,
+        "headers": {
+          "Allow": "GET, HEAD, PUT",
+          "Content-Length": "133",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"UNSUPPORTED\",\"message\":\"this method is not handled on this endpoint\",\"detail\":{\"lazarette\":\"E_NEEDS_SUBTOOL\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "DELETE",
+        "path": "/v2/apps/example/blobs/sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7"
+      },
+      "response": {
+        "status": 405,
+        "headers": {
+          "Allow": "GET, HEAD",
+          "Content-Length": "133",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"UNSUPPORTED\",\"message\":\"this method is not handled on this endpoint\",\"detail\":{\"lazarette\":\"E_NEEDS_SUBTOOL\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/blobs/sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7",
+        "body": "x"
+      },
+      "response": {
+        "status": 405,
+        "headers": {
+          "Allow": "GET, HEAD",
+          "Content-Length": "133",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"UNSUPPORTED\",\"message\":\"this method is not handled on this endpoint\",\"detail\":{\"lazarette\":\"E_NEEDS_SUBTOOL\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "DELETE",
+        "path": "/v2/apps/example/blobs/uploads/00000000000000000000000000000001"
+      },
+      "response": {
+        "status": 405,
+        "headers": {
+          "Allow": "GET, PATCH, PUT",
+          "Content-Length": "133",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"UNSUPPORTED\",\"message\":\"this method is not handled on this endpoint\",\"detail\":{\"lazarette\":\"E_NEEDS_SUBTOOL\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/blobs/uploads/"
+      },
+      "response": {
+        "status": 405,
+        "headers": {
+          "Allow": "POST",
+          "Content-Length": "133",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"UNSUPPORTED\",\"message\":\"this method is not handled on this endpoint\",\"detail\":{\"lazarette\":\"E_NEEDS_SUBTOOL\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Length": "118",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"UNSUPPORTED\",\"message\":\"this endpoint is not handled\",\"detail\":{\"lazarette\":\"E_NEEDS_SUBTOOL\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/healthz"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Length": "118",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"UNSUPPORTED\",\"message\":\"this endpoint is not handled\",\"detail\":{\"lazarette\":\"E_NEEDS_SUBTOOL\"}}]}\n"
+      }
+    }
+  ]
+}

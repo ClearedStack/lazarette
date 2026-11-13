@@ -1,0 +1,75 @@
+{
+  "rule": "A repository name outside the OCI grammar is broken data: E_PARSE.",
+  "steps": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/Apps/Example/blobs/sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Length": "133",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"NAME_INVALID\",\"message\":\"repository name is not a valid OCI repository name\",\"detail\":{\"lazarette\":\"E_PARSE\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps//example/blobs/uploads/"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Length": "133",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"NAME_INVALID\",\"message\":\"repository name is not a valid OCI repository name\",\"detail\":{\"lazarette\":\"E_PARSE\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/-apps/manifests/sha256:c70503b35fd76637bf5fb5723feac32b1f8e5c6dbcea5b7009152d7ee6e17d2c"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Length": "133",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"NAME_INVALID\",\"message\":\"repository name is not a valid OCI repository name\",\"detail\":{\"lazarette\":\"E_PARSE\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/_example/manifests/sha256:c70503b35fd76637bf5fb5723feac32b1f8e5c6dbcea5b7009152d7ee6e17d2c"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Length": "133",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"NAME_INVALID\",\"message\":\"repository name is not a valid OCI repository name\",\"detail\":{\"lazarette\":\"E_PARSE\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/blobs/sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Length": "133",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"NAME_INVALID\",\"message\":\"repository name is not a valid OCI repository name\",\"detail\":{\"lazarette\":\"E_PARSE\"}}]}\n"
+      }
+    }
+  ]
+}
