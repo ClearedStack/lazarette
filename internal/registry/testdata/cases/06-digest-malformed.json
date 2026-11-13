@@ -1,0 +1,107 @@
+{
+  "rule": "A digest that is not sha256 plus 64 lower-case hex characters is broken data: E_PARSE.",
+  "steps": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/blobs/sha256:abc123"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Length": "162",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"DIGEST_INVALID\",\"message\":\"digest is malformed; expected sha256 followed by 64 lower-case hex characters\",\"detail\":{\"lazarette\":\"E_PARSE\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/blobs/sha256:5E930CBBF825C94C16E1BC9392C3CB32C38E07925D71CC7DEA08D6E8745B5CB7"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Length": "162",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"DIGEST_INVALID\",\"message\":\"digest is malformed; expected sha256 followed by 64 lower-case hex characters\",\"detail\":{\"lazarette\":\"E_PARSE\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/blobs/not-a-digest"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Length": "162",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"DIGEST_INVALID\",\"message\":\"digest is malformed; expected sha256 followed by 64 lower-case hex characters\",\"detail\":{\"lazarette\":\"E_PARSE\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps/example/blobs/uploads/?digest=sha256:zz",
+        "body": "x"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Length": "162",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"DIGEST_INVALID\",\"message\":\"digest is malformed; expected sha256 followed by 64 lower-case hex characters\",\"detail\":{\"lazarette\":\"E_PARSE\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps/example/blobs/uploads/"
+      },
+      "response": {
+        "status": 202,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Upload-Uuid": "00000000000000000000000000000001",
+          "Location": "/v2/apps/example/blobs/uploads/00000000000000000000000000000001",
+          "Range": "0-0"
+        }
+      }
+    },
+    {
+      "note": "finishing an upload without a digest",
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/blobs/uploads/00000000000000000000000000000001",
+        "body": "x"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Length": "143",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"DIGEST_INVALID\",\"message\":\"the digest query parameter is required to finish an upload\",\"detail\":{\"lazarette\":\"E_PARSE\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/manifests/sha256:abc123"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Length": "162",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"DIGEST_INVALID\",\"message\":\"digest is malformed; expected sha256 followed by 64 lower-case hex characters\",\"detail\":{\"lazarette\":\"E_PARSE\"}}]}\n"
+      }
+    }
+  ]
+}

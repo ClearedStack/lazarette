@@ -1,0 +1,167 @@
+{
+  "rule": "A blob is pushed as a session: POST opens it, PATCH adds bytes in order, PUT with the digest commits it. Only then can it be pulled, by digest, with GET or HEAD.",
+  "steps": [
+    {
+      "note": "not there yet",
+      "request": {
+        "method": "HEAD",
+        "path": "/v2/apps/example/blobs/sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Length": "78",
+          "Content-Type": "application/json"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps/example/blobs/uploads/"
+      },
+      "response": {
+        "status": 202,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Upload-Uuid": "00000000000000000000000000000001",
+          "Location": "/v2/apps/example/blobs/uploads/00000000000000000000000000000001",
+          "Range": "0-0"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PATCH",
+        "path": "/v2/apps/example/blobs/uploads/00000000000000000000000000000001",
+        "headers": {
+          "Content-Range": "0-39",
+          "Content-Type": "application/octet-stream"
+        },
+        "body": "Made-up layer contents for the Lazarette"
+      },
+      "response": {
+        "status": 202,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Upload-Uuid": "00000000000000000000000000000001",
+          "Location": "/v2/apps/example/blobs/uploads/00000000000000000000000000000001",
+          "Range": "0-39"
+        }
+      }
+    },
+    {
+      "note": "session status",
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/blobs/uploads/00000000000000000000000000000001"
+      },
+      "response": {
+        "status": 204,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Upload-Uuid": "00000000000000000000000000000001",
+          "Location": "/v2/apps/example/blobs/uploads/00000000000000000000000000000001",
+          "Range": "0-39"
+        }
+      }
+    },
+    {
+      "note": "still not pullable before the commit",
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/blobs/sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Length": "78",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"BLOB_UNKNOWN\",\"message\":\"blob is not in this registry\"}]}\n"
+      }
+    },
+    {
+      "note": "a chunk without Content-Range is appended",
+      "request": {
+        "method": "PATCH",
+        "path": "/v2/apps/example/blobs/uploads/00000000000000000000000000000001",
+        "headers": {
+          "Content-Type": "application/octet-stream"
+        },
+        "body": " saved examples.\nNot a real filesystem layer; the registry stores bytes and does not look inside.\n"
+      },
+      "response": {
+        "status": 202,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Upload-Uuid": "00000000000000000000000000000001",
+          "Location": "/v2/apps/example/blobs/uploads/00000000000000000000000000000001",
+          "Range": "0-137"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/blobs/uploads/00000000000000000000000000000001?digest=sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7",
+          "Location": "/v2/apps/example/blobs/sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "HEAD",
+        "path": "/v2/apps/example/blobs/sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Accept-Ranges": "bytes",
+          "Content-Length": "138",
+          "Content-Type": "application/octet-stream",
+          "Docker-Content-Digest": "sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7",
+          "Etag": "\"sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7\""
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/blobs/sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Accept-Ranges": "bytes",
+          "Content-Length": "138",
+          "Content-Type": "application/octet-stream",
+          "Docker-Content-Digest": "sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7",
+          "Etag": "\"sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7\""
+        },
+        "bodyFile": "layer.bin"
+      }
+    },
+    {
+      "note": "the session is gone after the commit",
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/blobs/uploads/00000000000000000000000000000001"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Length": "84",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"BLOB_UPLOAD_UNKNOWN\",\"message\":\"upload session is not known\"}]}\n"
+      }
+    }
+  ]
+}

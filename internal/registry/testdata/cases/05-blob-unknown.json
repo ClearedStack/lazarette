@@ -1,0 +1,32 @@
+{
+  "rule": "Asking for a blob that was never pushed is answered 404 BLOB_UNKNOWN. This is an ordinary answer, not a failure, and carries no public error code.",
+  "steps": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/blobs/sha256:f44d42075ae789c4e44a5a0742b3afa644bfe7371ec3684279686787f8cbe717"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Length": "78",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"BLOB_UNKNOWN\",\"message\":\"blob is not in this registry\"}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "HEAD",
+        "path": "/v2/apps/example/blobs/sha256:f44d42075ae789c4e44a5a0742b3afa644bfe7371ec3684279686787f8cbe717"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Length": "78",
+          "Content-Type": "application/json"
+        }
+      }
+    }
+  ]
+}
