@@ -1,0 +1,187 @@
+{
+  "rule": "cosign signature tags (sha256-\u003chex\u003e.sig) are accepted for stored images, listed at /tags/list, and refused when the target image is missing or is itself a signature.",
+  "steps": [
+    {
+      "note": "cosign checks whether a signature tag already exists before pushing",
+      "request": {
+        "method": "HEAD",
+        "path": "/v2/apps/example/manifests/sha256-c70503b35fd76637bf5fb5723feac32b1f8e5c6dbcea5b7009152d7ee6e17d2c.sig"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Length": "88",
+          "Content-Type": "application/json"
+        }
+      }
+    },
+    {
+      "note": "setup: push config.json",
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps/example/blobs/uploads/?digest=sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de",
+        "bodyFile": "config.json"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de",
+          "Location": "/v2/apps/example/blobs/sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de"
+        }
+      }
+    },
+    {
+      "note": "setup: push layer.bin",
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps/example/blobs/uploads/?digest=sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7",
+        "bodyFile": "layer.bin"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7",
+          "Location": "/v2/apps/example/blobs/sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7"
+        }
+      }
+    },
+    {
+      "note": "setup: push sig.bin",
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps/example/blobs/uploads/?digest=sha256:0e70a452469375ec8df0c9d3ac470fec3a965a45faab87aedfc1da8cd2642e2c",
+        "bodyFile": "sig.bin"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:0e70a452469375ec8df0c9d3ac470fec3a965a45faab87aedfc1da8cd2642e2c",
+          "Location": "/v2/apps/example/blobs/sha256:0e70a452469375ec8df0c9d3ac470fec3a965a45faab87aedfc1da8cd2642e2c"
+        }
+      }
+    },
+    {
+      "note": "target image has not been pushed yet",
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/manifests/sha256-c70503b35fd76637bf5fb5723feac32b1f8e5c6dbcea5b7009152d7ee6e17d2c.sig",
+        "headers": {
+          "Content-Type": "application/vnd.oci.image.manifest.v1+json"
+        },
+        "bodyFile": "manifest-cosign-sig.json"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Length": "182",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"MANIFEST_BLOB_UNKNOWN\",\"message\":\"signature tag names an image digest that has not been pushed; the signature was not stored\",\"detail\":{\"lazarette\":\"E_PARSE\"}}]}\n"
+      }
+    },
+    {
+      "note": "push target image manifest",
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/manifests/sha256:c70503b35fd76637bf5fb5723feac32b1f8e5c6dbcea5b7009152d7ee6e17d2c",
+        "headers": {
+          "Content-Type": "application/vnd.oci.image.manifest.v1+json"
+        },
+        "bodyFile": "manifest.json"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:c70503b35fd76637bf5fb5723feac32b1f8e5c6dbcea5b7009152d7ee6e17d2c",
+          "Location": "/v2/apps/example/manifests/sha256:c70503b35fd76637bf5fb5723feac32b1f8e5c6dbcea5b7009152d7ee6e17d2c"
+        }
+      }
+    },
+    {
+      "note": "repository exists with zero signature tags so far",
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/tags/list"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Length": "34",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"name\":\"apps/example\",\"tags\":[]}\n"
+      }
+    },
+    {
+      "note": "push cosign signature tag",
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/manifests/sha256-c70503b35fd76637bf5fb5723feac32b1f8e5c6dbcea5b7009152d7ee6e17d2c.sig",
+        "headers": {
+          "Content-Type": "application/vnd.oci.image.manifest.v1+json"
+        },
+        "bodyFile": "manifest-cosign-sig.json"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:84458c43ca898651f94471354c9cfeff6a1804c27a9365213e182f34b28b98cd",
+          "Location": "/v2/apps/example/manifests/sha256:84458c43ca898651f94471354c9cfeff6a1804c27a9365213e182f34b28b98cd"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/manifests/sha256-c70503b35fd76637bf5fb5723feac32b1f8e5c6dbcea5b7009152d7ee6e17d2c.sig"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Length": "481",
+          "Content-Type": "application/vnd.oci.image.manifest.v1+json",
+          "Docker-Content-Digest": "sha256:84458c43ca898651f94471354c9cfeff6a1804c27a9365213e182f34b28b98cd"
+        },
+        "bodyFile": "manifest-cosign-sig.json"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/tags/list"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Length": "111",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"name\":\"apps/example\",\"tags\":[\"sha256-c70503b35fd76637bf5fb5723feac32b1f8e5c6dbcea5b7009152d7ee6e17d2c.sig\"]}\n"
+      }
+    },
+    {
+      "note": "signing a signature manifest itself is refused",
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/manifests/sha256-84458c43ca898651f94471354c9cfeff6a1804c27a9365213e182f34b28b98cd.sig",
+        "headers": {
+          "Content-Type": "application/vnd.oci.image.manifest.v1+json"
+        },
+        "bodyFile": "manifest-cosign-sig.json"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Length": "180",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"MANIFEST_INVALID\",\"message\":\"signature tag must target an image manifest or image index, not another signature or referrer\",\"detail\":{\"lazarette\":\"E_PARSE\"}}]}\n"
+      }
+    }
+  ]
+}

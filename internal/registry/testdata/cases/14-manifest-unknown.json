@@ -1,0 +1,32 @@
+{
+  "rule": "Asking for a manifest that was never pushed is answered 404 MANIFEST_UNKNOWN, with no public error code.",
+  "steps": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/manifests/sha256:c70503b35fd76637bf5fb5723feac32b1f8e5c6dbcea5b7009152d7ee6e17d2c"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Length": "88",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"MANIFEST_UNKNOWN\",\"message\":\"manifest is not in this repository\"}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "HEAD",
+        "path": "/v2/apps/example/manifests/sha256:c70503b35fd76637bf5fb5723feac32b1f8e5c6dbcea5b7009152d7ee6e17d2c"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Length": "88",
+          "Content-Type": "application/json"
+        }
+      }
+    }
+  ]
+}

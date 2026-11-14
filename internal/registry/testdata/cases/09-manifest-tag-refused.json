@@ -1,0 +1,97 @@
+{
+  "rule": "Image manifests are addressed by sha256 digest only; general tag references such as latest or v1.2.3 are valid and unfamiliar (E_NEEDS_SUBTOOL), for push and for pull.",
+  "steps": [
+    {
+      "note": "setup: push config.json in one request",
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps/example/blobs/uploads/?digest=sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de",
+        "bodyFile": "config.json"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de",
+          "Location": "/v2/apps/example/blobs/sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de"
+        }
+      }
+    },
+    {
+      "note": "setup: push layer.bin in one request",
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps/example/blobs/uploads/?digest=sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7",
+        "bodyFile": "layer.bin"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7",
+          "Location": "/v2/apps/example/blobs/sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/manifests/latest",
+        "headers": {
+          "Content-Type": "application/vnd.oci.image.manifest.v1+json"
+        },
+        "bodyFile": "manifest.json"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Length": "167",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"UNSUPPORTED\",\"message\":\"manifests are addressed by sha256 digest only; tag references are not handled\",\"detail\":{\"lazarette\":\"E_NEEDS_SUBTOOL\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/manifests/latest"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Length": "167",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"UNSUPPORTED\",\"message\":\"manifests are addressed by sha256 digest only; tag references are not handled\",\"detail\":{\"lazarette\":\"E_NEEDS_SUBTOOL\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "HEAD",
+        "path": "/v2/apps/example/manifests/v1.2.3"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Length": "167",
+          "Content-Type": "application/json"
+        }
+      }
+    },
+    {
+      "note": "the refused push stored nothing",
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/manifests/sha256:c70503b35fd76637bf5fb5723feac32b1f8e5c6dbcea5b7009152d7ee6e17d2c"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Length": "88",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"MANIFEST_UNKNOWN\",\"message\":\"manifest is not in this repository\"}]}\n"
+      }
+    }
+  ]
+}

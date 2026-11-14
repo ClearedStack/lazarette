@@ -1,0 +1,81 @@
+{
+  "rule": "Part of a blob can be pulled with a Range header, so an interrupted pull can resume. A range that is malformed or past the end is broken data: E_PARSE.",
+  "steps": [
+    {
+      "note": "setup: push layer.bin in one request",
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps/example/blobs/uploads/?digest=sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7",
+        "bodyFile": "layer.bin"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7",
+          "Location": "/v2/apps/example/blobs/sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/blobs/sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7",
+        "headers": {
+          "Range": "bytes=0-7"
+        }
+      },
+      "response": {
+        "status": 206,
+        "headers": {
+          "Accept-Ranges": "bytes",
+          "Content-Length": "8",
+          "Content-Range": "bytes 0-7/138",
+          "Content-Type": "application/octet-stream",
+          "Docker-Content-Digest": "sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7",
+          "Etag": "\"sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7\""
+        },
+        "body": "Made-up "
+      }
+    },
+    {
+      "note": "past the end",
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/blobs/sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7",
+        "headers": {
+          "Range": "bytes=100000-"
+        }
+      },
+      "response": {
+        "status": 416,
+        "headers": {
+          "Content-Length": "151",
+          "Content-Range": "bytes */138",
+          "Content-Type": "application/json",
+          "Docker-Content-Digest": "sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7"
+        },
+        "body": "{\"errors\":[{\"code\":\"SIZE_INVALID\",\"message\":\"Range header is malformed or asks for bytes past the end of the blob\",\"detail\":{\"lazarette\":\"E_PARSE\"}}]}\n"
+      }
+    },
+    {
+      "note": "not a byte range",
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/blobs/sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7",
+        "headers": {
+          "Range": "bytes=later"
+        }
+      },
+      "response": {
+        "status": 416,
+        "headers": {
+          "Content-Length": "151",
+          "Content-Type": "application/json",
+          "Docker-Content-Digest": "sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7"
+        },
+        "body": "{\"errors\":[{\"code\":\"SIZE_INVALID\",\"message\":\"Range header is malformed or asks for bytes past the end of the blob\",\"detail\":{\"lazarette\":\"E_PARSE\"}}]}\n"
+      }
+    }
+  ]
+}

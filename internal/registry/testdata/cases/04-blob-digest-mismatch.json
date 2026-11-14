@@ -1,0 +1,91 @@
+{
+  "rule": "Bytes that do not hash to the digest given are refused with E_PARSE, nothing is stored, and the session ends.",
+  "steps": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps/example/blobs/uploads/?digest=sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7",
+        "body": "not the layer bytes\n"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Length": "153",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"DIGEST_INVALID\",\"message\":\"uploaded content does not match the digest given; nothing was stored\",\"detail\":{\"lazarette\":\"E_PARSE\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "HEAD",
+        "path": "/v2/apps/example/blobs/sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Length": "78",
+          "Content-Type": "application/json"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps/example/blobs/uploads/"
+      },
+      "response": {
+        "status": 202,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Upload-Uuid": "00000000000000000000000000000002",
+          "Location": "/v2/apps/example/blobs/uploads/00000000000000000000000000000002",
+          "Range": "0-0"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/blobs/uploads/00000000000000000000000000000002?digest=sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7",
+        "body": "not the layer bytes\n"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Length": "153",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"DIGEST_INVALID\",\"message\":\"uploaded content does not match the digest given; nothing was stored\",\"detail\":{\"lazarette\":\"E_PARSE\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/blobs/sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Length": "78",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"BLOB_UNKNOWN\",\"message\":\"blob is not in this registry\"}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/blobs/uploads/00000000000000000000000000000002"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Length": "84",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"BLOB_UPLOAD_UNKNOWN\",\"message\":\"upload session is not known\"}]}\n"
+      }
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+# Default-deny policy for the clearedstack namespace (matches logbook/deploy)
+# plus the explicit ingress rule Lazarette needs.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: clearedstack
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Lazarette accepts HTTP OCI v2 traffic on TCP 5000 only from Keelworks,
+# temporary build/sign Jobs managed by Keelworks, and Shipkeeper inside the
+# clearedstack namespace. Pods in cs-workers cannot reach Lazarette, and
+# Lazarette itself makes zero outbound network connections (egress: []).
+#
+# Note on node containerd pulls: k3s containerd runs in the node's host network
+# namespace (configured via /etc/rancher/k3s/registries.yaml to speak HTTP to
+# lazarette.clearedstack.svc.cluster.local:5000). On k3s flannel/kube-router,
+# host-local traffic from the node where Lazarette runs is permitted; if a CNI
+# filters host-namespace traffic to pods on other nodes, add an ipBlock entry
+# for the internal node subnet at cluster setup time.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: lazarette
+  namespace: clearedstack
+  labels:
+    app.kubernetes.io/name: lazarette
+    app.kubernetes.io/part-of: clearedstack
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: lazarette
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: keelworks
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/managed-by: keelworks
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: shipkeeper
+      ports:
+        - protocol: TCP
+          port: 5000
+  egress: []

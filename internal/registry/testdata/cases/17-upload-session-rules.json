@@ -1,0 +1,216 @@
+{
+  "rule": "Chunks must arrive in order and be the length they declare. An unknown session is 404. A refused chunk leaves the session as it was.",
+  "steps": [
+    {
+      "note": "no such session",
+      "request": {
+        "method": "PATCH",
+        "path": "/v2/apps/example/blobs/uploads/00000000000000000000000000000009",
+        "body": "x"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Length": "84",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"BLOB_UPLOAD_UNKNOWN\",\"message\":\"upload session is not known\"}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "PATCH",
+        "path": "/v2/apps/example/blobs/uploads/not-a-session-id",
+        "body": "x"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Length": "84",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"BLOB_UPLOAD_UNKNOWN\",\"message\":\"upload session is not known\"}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps/example/blobs/uploads/"
+      },
+      "response": {
+        "status": 202,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Upload-Uuid": "00000000000000000000000000000001",
+          "Location": "/v2/apps/example/blobs/uploads/00000000000000000000000000000001",
+          "Range": "0-0"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PATCH",
+        "path": "/v2/apps/example/blobs/uploads/00000000000000000000000000000001",
+        "headers": {
+          "Content-Range": "0-39"
+        },
+        "body": "Made-up layer contents for the Lazarette"
+      },
+      "response": {
+        "status": 202,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Upload-Uuid": "00000000000000000000000000000001",
+          "Location": "/v2/apps/example/blobs/uploads/00000000000000000000000000000001",
+          "Range": "0-39"
+        }
+      }
+    },
+    {
+      "note": "leaves a gap",
+      "request": {
+        "method": "PATCH",
+        "path": "/v2/apps/example/blobs/uploads/00000000000000000000000000000001",
+        "headers": {
+          "Content-Range": "50-59"
+        },
+        "body": "0123456789"
+      },
+      "response": {
+        "status": 416,
+        "headers": {
+          "Content-Length": "142",
+          "Content-Type": "application/json",
+          "Location": "/v2/apps/example/blobs/uploads/00000000000000000000000000000001",
+          "Range": "0-39"
+        },
+        "body": "{\"errors\":[{\"code\":\"BLOB_UPLOAD_INVALID\",\"message\":\"chunk does not start where the upload currently ends\",\"detail\":{\"lazarette\":\"E_PARSE\"}}]}\n"
+      }
+    },
+    {
+      "note": "overlaps what is already there",
+      "request": {
+        "method": "PATCH",
+        "path": "/v2/apps/example/blobs/uploads/00000000000000000000000000000001",
+        "headers": {
+          "Content-Range": "0-9"
+        },
+        "body": "0123456789"
+      },
+      "response": {
+        "status": 416,
+        "headers": {
+          "Content-Length": "142",
+          "Content-Type": "application/json",
+          "Location": "/v2/apps/example/blobs/uploads/00000000000000000000000000000001",
+          "Range": "0-39"
+        },
+        "body": "{\"errors\":[{\"code\":\"BLOB_UPLOAD_INVALID\",\"message\":\"chunk does not start where the upload currently ends\",\"detail\":{\"lazarette\":\"E_PARSE\"}}]}\n"
+      }
+    },
+    {
+      "note": "declares 60 bytes, sends 10",
+      "request": {
+        "method": "PATCH",
+        "path": "/v2/apps/example/blobs/uploads/00000000000000000000000000000001",
+        "headers": {
+          "Content-Range": "40-99"
+        },
+        "body": "0123456789"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Length": "158",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"BLOB_UPLOAD_INVALID\",\"message\":\"chunk is not the length its headers declare; the chunk was discarded\",\"detail\":{\"lazarette\":\"E_PARSE\"}}]}\n"
+      }
+    },
+    {
+      "note": "not the upload form of Content-Range",
+      "request": {
+        "method": "PATCH",
+        "path": "/v2/apps/example/blobs/uploads/00000000000000000000000000000001",
+        "headers": {
+          "Content-Range": "bytes 40-49/100"
+        },
+        "body": "0123456789"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Length": "163",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"BLOB_UPLOAD_INVALID\",\"message\":\"Content-Range header is malformed; expected first byte, hyphen, last byte\",\"detail\":{\"lazarette\":\"E_PARSE\"}}]}\n"
+      }
+    },
+    {
+      "note": "still 40 bytes",
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/blobs/uploads/00000000000000000000000000000001"
+      },
+      "response": {
+        "status": 204,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Upload-Uuid": "00000000000000000000000000000001",
+          "Location": "/v2/apps/example/blobs/uploads/00000000000000000000000000000001",
+          "Range": "0-39"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PATCH",
+        "path": "/v2/apps/example/blobs/uploads/00000000000000000000000000000001",
+        "headers": {
+          "Content-Range": "40-137"
+        },
+        "body": " saved examples.\nNot a real filesystem layer; the registry stores bytes and does not look inside.\n"
+      },
+      "response": {
+        "status": 202,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Upload-Uuid": "00000000000000000000000000000001",
+          "Location": "/v2/apps/example/blobs/uploads/00000000000000000000000000000001",
+          "Range": "0-137"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/blobs/uploads/00000000000000000000000000000001?digest=sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7",
+          "Location": "/v2/apps/example/blobs/sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/blobs/sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Accept-Ranges": "bytes",
+          "Content-Length": "138",
+          "Content-Type": "application/octet-stream",
+          "Docker-Content-Digest": "sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7",
+          "Etag": "\"sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7\""
+        },
+        "bodyFile": "layer.bin"
+      }
+    }
+  ]
+}

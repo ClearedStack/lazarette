@@ -1,0 +1,101 @@
+{
+  "rule": "Only OCI image manifests and OCI image indexes are handled. Docker v2 manifests and manifest lists are valid and unfamiliar: E_NEEDS_SUBTOOL, and not stored.",
+  "steps": [
+    {
+      "note": "setup: push config.json in one request",
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps/example/blobs/uploads/?digest=sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de",
+        "bodyFile": "config.json"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de",
+          "Location": "/v2/apps/example/blobs/sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de"
+        }
+      }
+    },
+    {
+      "note": "setup: push layer.bin in one request",
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps/example/blobs/uploads/?digest=sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7",
+        "bodyFile": "layer.bin"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7",
+          "Location": "/v2/apps/example/blobs/sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/manifests/sha256:4f5942409b0d3e01d7a11cad9d81742519869bdaddb565f0dbbd34e6dc0cade4",
+        "headers": {
+          "Content-Type": "application/vnd.docker.distribution.manifest.v2+json"
+        },
+        "bodyFile": "manifest-docker-v2.json"
+      },
+      "response": {
+        "status": 415,
+        "headers": {
+          "Content-Length": "181",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"UNSUPPORTED\",\"message\":\"manifest media type is not an OCI image manifest or OCI image index, the only types handled\",\"detail\":{\"lazarette\":\"E_NEEDS_SUBTOOL\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/manifests/sha256:8ebbd8da4c27edcfba4974b6de70efed38e3ae01cac7adad27261be7af5c2e69",
+        "headers": {
+          "Content-Type": "application/vnd.docker.distribution.manifest.list.v2+json"
+        },
+        "bodyFile": "manifest-docker-list.json"
+      },
+      "response": {
+        "status": 415,
+        "headers": {
+          "Content-Length": "181",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"UNSUPPORTED\",\"message\":\"manifest media type is not an OCI image manifest or OCI image index, the only types handled\",\"detail\":{\"lazarette\":\"E_NEEDS_SUBTOOL\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/manifests/sha256:4f5942409b0d3e01d7a11cad9d81742519869bdaddb565f0dbbd34e6dc0cade4"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Length": "88",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"MANIFEST_UNKNOWN\",\"message\":\"manifest is not in this repository\"}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/manifests/sha256:8ebbd8da4c27edcfba4974b6de70efed38e3ae01cac7adad27261be7af5c2e69"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Length": "88",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"MANIFEST_UNKNOWN\",\"message\":\"manifest is not in this repository\"}]}\n"
+      }
+    }
+  ]
+}
