@@ -1,6 +1,9 @@
 package store
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -8,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/iotest"
@@ -399,5 +403,201 @@ func TestCollectGarbageRetainsLastFiveSignedAndSparesGraceWindow(t *testing.T) {
 	}
 	if _, err := s.BlobSize(freshBlob); err != nil {
 		t.Errorf("in-flight blob removed inside grace window: %v", err)
+	}
+}
+
+func TestSnapshotRoundTripAndDeterminism(t *testing.T) {
+	srcDir := filepath.Join(t.TempDir(), "src")
+	s, err := Open(srcDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := storeBlob(t, s, "00000000000000000000000000000101", `{"architecture":"arm64","os":"linux"}`)
+	layer := storeBlob(t, s, "00000000000000000000000000000102", "binary-layer-bytes")
+	sigPayload := storeBlob(t, s, "00000000000000000000000000000103", `{"critical":{"type":"cosign container image signature"}}`)
+
+	imgRaw := []byte(`{"schemaVersion":2,"config":{"digest":"` + cfg.String() + `","size":37},"layers":[{"digest":"` + layer.String() + `","size":18}]}`)
+	imgD := DigestOfBytes(imgRaw)
+	if err := s.PutManifest("apps/assay", imgD, imgRaw, ManifestOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	sigRaw := []byte(`{"schemaVersion":2,"config":{"digest":"` + cfg.String() + `","size":37},"layers":[{"digest":"` + sigPayload.String() + `","size":56}],"subject":{"digest":"` + imgD.String() + `","size":` + strconv.Itoa(len(imgRaw)) + `}}`)
+	sigD := DigestOfBytes(sigRaw)
+	subj := imgD
+	refEntry := ReferrerEntry{
+		MediaType:    "application/vnd.oci.image.manifest.v1+json",
+		Digest:       sigD.String(),
+		Size:         int64(len(sigRaw)),
+		ArtifactType: "application/vnd.dev.cosign.simplesigning.v1+json",
+		Annotations:  map[string]string{"dev.cosignproject.cosign/signature": "MEUCIQ=="},
+	}
+	if err := s.PutManifest("apps/assay", sigD, sigRaw, ManifestOptions{
+		Tag:           "sha256-" + imgD.Hex() + ".sig",
+		Subject:       &subj,
+		Referrer:      &refEntry,
+		SignedSubject: &subj,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.PutManifest("lazarette", imgD, imgRaw, ManifestOptions{SignedSubject: &subj}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Leave an active upload and a tmp file to verify snapshots exclude transient state.
+	if err := s.NewUpload("00000000000000000000000000000199"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, tmpDir, "scratch-partial"), []byte("ignore"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var snap1, snap2 bytes.Buffer
+	stats1, err := s.WriteSnapshot(&snap1)
+	if err != nil {
+		t.Fatalf("WriteSnapshot: %v", err)
+	}
+	if stats1.Repos != 2 || stats1.Manifests != 3 || stats1.Blobs != 3 {
+		t.Fatalf("unexpected SnapshotStats: %+v", stats1)
+	}
+
+	// Simulate read-only PVC mount permissions and verify WriteSnapshotFromDir is deterministic.
+	if err := os.Chmod(srcDir, 0o550); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(srcDir, 0o750) })
+
+	stats2, err := WriteSnapshotFromDir(srcDir, &snap2)
+	if err != nil {
+		t.Fatalf("WriteSnapshotFromDir on read-only root: %v", err)
+	}
+	if stats1 != stats2 || !bytes.Equal(snap1.Bytes(), snap2.Bytes()) {
+		t.Fatal("WriteSnapshot and WriteSnapshotFromDir are not byte-for-byte deterministic")
+	}
+
+	dstDir := filepath.Join(t.TempDir(), "restored")
+	rStats, err := RestoreSnapshot(bytes.NewReader(snap1.Bytes()), dstDir)
+	if err != nil {
+		t.Fatalf("RestoreSnapshot: %v", err)
+	}
+	if rStats != stats1 {
+		t.Fatalf("RestoreSnapshot stats = %+v, want %+v", rStats, stats1)
+	}
+
+	// Refuses to overwrite a non-empty store directory.
+	if _, err := RestoreSnapshot(bytes.NewReader(snap1.Bytes()), dstDir); err == nil {
+		t.Fatal("expected RestoreSnapshot to refuse non-empty destination")
+	}
+
+	restored, err := Open(dstDir)
+	if err != nil {
+		t.Fatalf("Open restored store: %v", err)
+	}
+	repos, err := restored.ListRepos()
+	if err != nil || !reflect.DeepEqual(repos, []string{"apps/assay", "lazarette"}) {
+		t.Fatalf("restored ListRepos = %v (err=%v)", repos, err)
+	}
+	retained, err := restored.ListRetainedDigests("apps/assay")
+	if err != nil || !reflect.DeepEqual(retained, []string{imgD.String()}) {
+		t.Fatalf("restored ListRetainedDigests = %v (err=%v)", retained, err)
+	}
+	tags, err := restored.ListTags("apps/assay")
+	if err != nil || !reflect.DeepEqual(tags, []string{"sha256-" + imgD.Hex() + ".sig"}) {
+		t.Fatalf("restored ListTags = %v (err=%v)", tags, err)
+	}
+	refs, err := restored.ListReferrers("apps/assay", imgD, "")
+	if err != nil || len(refs) != 1 || refs[0].Digest != sigD.String() {
+		t.Fatalf("restored ListReferrers = %+v (err=%v)", refs, err)
+	}
+}
+
+func buildSingleEntrySnapshot(t *testing.T, hdr *tar.Header, body []byte) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(zw)
+	if err := tw.WriteHeader(hdr); err != nil {
+		t.Fatal(err)
+	}
+	if len(body) > 0 {
+		if _, err := tw.Write(body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func TestRestoreSnapshotRejectsCorruptAndUnsafeArchives(t *testing.T) {
+	goodBlob := []byte("hello-blob")
+	goodHex := DigestOfBytes(goodBlob).Hex()
+	orphanManifest := []byte(`{"schemaVersion":2,"config":{"digest":"sha256:` + goodHex + `","size":10},"layers":[]}`)
+	orphanHex := DigestOfBytes(orphanManifest).Hex()
+
+	cases := []struct {
+		name    string
+		archive []byte
+	}{
+		{
+			name: "path-traversal",
+			archive: buildSingleEntrySnapshot(t, &tar.Header{
+				Typeflag: tar.TypeReg,
+				Name:     "../../etc/passwd",
+				Size:     4,
+				Mode:     0o600,
+			}, []byte("root")),
+		},
+		{
+			name: "symlink-entry",
+			archive: buildSingleEntrySnapshot(t, &tar.Header{
+				Typeflag: tar.TypeSymlink,
+				Name:     "blobs/sha256/" + goodHex,
+				Linkname: "/etc/shadow",
+			}, nil),
+		},
+		{
+			name: "tampered-blob-digest",
+			archive: buildSingleEntrySnapshot(t, &tar.Header{
+				Typeflag: tar.TypeReg,
+				Name:     "blobs/sha256/" + goodHex,
+				Size:     int64(len(goodBlob)),
+				Mode:     0o440,
+			}, []byte("wrong-blob")),
+		},
+		{
+			name: "manifest-missing-referenced-blob",
+			archive: buildSingleEntrySnapshot(t, &tar.Header{
+				Typeflag: tar.TypeReg,
+				Name:     "manifests/apps/worker/_sha256/" + orphanHex,
+				Size:     int64(len(orphanManifest)),
+				Mode:     0o440,
+			}, orphanManifest),
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dst := filepath.Join(t.TempDir(), "empty-target")
+			if err := os.MkdirAll(dst, 0o750); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := RestoreSnapshot(bytes.NewReader(tc.archive), dst); err == nil {
+				t.Fatalf("%s: expected error from RestoreSnapshot, got nil", tc.name)
+			}
+			entries, err := os.ReadDir(dst)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(entries) != 0 {
+				t.Fatalf("%s: failed restore left %d entries in destination", tc.name, len(entries))
+			}
+		})
 	}
 }

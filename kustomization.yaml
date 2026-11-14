@@ -1,0 +1,7 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - deploy/priorityclass.yaml
+  - deploy/networkpolicy.yaml
+  - deploy/lazarette.yaml
+  - deploy/backup-cronjob.yaml
