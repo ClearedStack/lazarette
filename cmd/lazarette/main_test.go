@@ -26,6 +26,62 @@ func TestRunValidatesFlags(t *testing.T) {
 	}
 }
 
+func TestRunEnvironmentConfiguration(t *testing.T) {
+	t.Setenv("LAZARETTE_DATA", t.TempDir())
+	t.Setenv("LAZARETTE_ADDR", "127.0.0.1:0")
+	t.Setenv("LAZARETTE_IDLE_TIMEOUT", "bad-duration")
+
+	var stderr bytes.Buffer
+	if code := run(context.Background(), nil, &stderr, nil); code != 2 {
+		t.Fatalf("malformed LAZARETTE_IDLE_TIMEOUT: exit %d, want 2", code)
+	}
+
+	if code := run(context.Background(), []string{"-version"}, &stderr, nil); code != 0 {
+		t.Fatalf("-version with malformed env: exit %d, want 0", code)
+	}
+
+	// Explicit -idle-timeout overrides malformed LAZARETTE_IDLE_TIMEOUT.
+	overrideCtx, overrideCancel := context.WithCancel(context.Background())
+	overrideReady := make(chan string, 1)
+	overrideDone := make(chan int, 1)
+	go func() {
+		overrideDone <- run(overrideCtx, []string{"-idle-timeout=5s", "-gc-interval=0s"}, &stderr, overrideReady)
+	}()
+	<-overrideReady
+	overrideCancel()
+	if code := <-overrideDone; code != 0 {
+		t.Fatalf("flag override exit code = %d, want 0", code)
+	}
+
+	// Valid LAZARETTE_* environment variables configure startup with zero flags.
+	t.Setenv("LAZARETTE_IDLE_TIMEOUT", "5s")
+	t.Setenv("LAZARETTE_GC_INTERVAL", "0s")
+	t.Setenv("LAZARETTE_GC_GRACE", "10m")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	ready := make(chan string, 1)
+	done := make(chan int, 1)
+	stderr.Reset()
+	go func() {
+		done <- run(ctx, nil, &stderr, ready)
+	}()
+
+	addr := <-ready
+	resp, err := http.Get("http://" + addr + "/v2/")
+	if err != nil {
+		cancel()
+		t.Fatalf("GET /v2/: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("GET /v2/ status = %d, want 200", resp.StatusCode)
+	}
+	cancel()
+	if code := <-done; code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr:\n%s", code, stderr.String())
+	}
+}
+
 func TestRunServesAndRunsScheduledGarbageCollection(t *testing.T) {
 	dir := t.TempDir()
 	// Pre-populate an unreferenced blob so the scheduled GC pass removes it.

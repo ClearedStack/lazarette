@@ -36,7 +36,7 @@ Lazarette exposes a cluster-private HTTP interface (`ClusterIP` only, no public 
 
 ### Specification clarifications recorded during implementation
 
-1. **Signature wire formats:** `cosign` v2 supports both OCI v1.1 `subject` referrers (Sigstore bundle `application/vnd.dev.sigstore.bundle.v0.3+json`, DSSE `application/vnd.dsse.envelope.v1+json`, and `application/vnd.dev.cosign.artifact.sig.v1+json`) and legacy `sha256-<64hex>.sig` tags carrying `application/vnd.dev.cosign.simplesigning.v1+json` layers. Supporting both keeps `ko` + `cosign` jobs working regardless of `COSIGN_EXPERIMENTAL` / OCI 1.1 mode while still refusing mutable human tags.
+1. **Signature wire formats:** `cosign` v2 supports both OCI v1.1 `subject` referrers (Sigstore bundle `application/vnd.dev.sigstore.bundle.v0.3+json`, DSSE `application/vnd.dsse.envelope.v1+json`, and `application/vnd.dev.cosign.artifact.sig.v1+json`) and legacy `sha256-<64hex>.sig` tags carrying `application/vnd.dev.cosign.simplesigning.v1+json` layers. Lazarette accepts both and bridges `sha256-<64hex>.sig` pushes into `/v2/<name>/referrers/<digest>` under their signature layer `artifactType` so OCI 1.1 referrers verifiers such as Keelworks discover tag-mode and subject-mode signatures uniformly while still refusing mutable human tags.
 2. **Digest index endpoint (`/v2/<name>/digests/list`):** The original draft required retaining a 5-digest index for Shipkeeper without naming the HTTP path. Because OCI Distribution `/tags/list` lists tags rather than untagged `sha256` image digests, `GET /v2/<name>/digests/list` was added alongside `/v2/<name>/tags/list` to return the retained signed `sha256` digests in oldest-to-newest order.
 
 ## Sub-Tools & Failure Modes
