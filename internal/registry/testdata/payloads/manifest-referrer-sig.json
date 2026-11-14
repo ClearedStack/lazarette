@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 2,
+  "mediaType": "application/vnd.oci.image.manifest.v1+json",
+  "artifactType": "application/vnd.dev.sigstore.bundle.v0.3+json",
+  "config": {
+    "mediaType": "application/vnd.oci.empty.v1+json",
+    "digest": "sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de",
+    "size": 258
+  },
+  "layers": [
+    {
+      "mediaType": "application/vnd.dev.sigstore.bundle.v0.3+json",
+      "digest": "sha256:0e70a452469375ec8df0c9d3ac470fec3a965a45faab87aedfc1da8cd2642e2c",
+      "size": 67
+    }
+  ],
+  "subject": {
+    "mediaType": "application/vnd.oci.image.manifest.v1+json",
+    "digest": "sha256:c70503b35fd76637bf5fb5723feac32b1f8e5c6dbcea5b7009152d7ee6e17d2c",
+    "size": 472
+  },
+  "annotations": {
+    "org.opencontainers.image.created": "2026-01-05T09:00:00Z"
+  }
+}

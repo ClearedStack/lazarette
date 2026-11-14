@@ -2,6 +2,8 @@
 package store
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"regexp"
 	"strings"
@@ -42,6 +44,15 @@ func ParseDigest(s string) (Digest, error) {
 	}
 	return Digest{hex: encoded}, nil
 }
+
+// DigestOfBytes computes the sha256 Digest of data.
+func DigestOfBytes(data []byte) Digest {
+	sum := sha256.Sum256(data)
+	return Digest{hex: hex.EncodeToString(sum[:])}
+}
+
+// IsZero reports whether d is the zero Digest.
+func (d Digest) IsZero() bool { return d.hex == "" }
 
 // String returns the digest in "sha256:<hex>" form.
 func (d Digest) String() string { return "sha256:" + d.hex }

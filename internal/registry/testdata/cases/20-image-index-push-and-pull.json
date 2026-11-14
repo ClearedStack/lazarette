@@ -1,0 +1,142 @@
+{
+  "rule": "An OCI image index is stored by sha256 digest only when every child manifest is already stored in the same repository at the stated size and media type.",
+  "steps": [
+    {
+      "note": "child manifest not pushed yet",
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/manifests/sha256:2530111c2bb389d0d60bcec8b24375523104cf9b881dae5c50ec2c38fed0fb8d",
+        "headers": {
+          "Content-Type": "application/vnd.oci.image.index.v1+json"
+        },
+        "bodyFile": "manifest-index-valid.json"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Length": "175",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"MANIFEST_BLOB_UNKNOWN\",\"message\":\"image index refers to a manifest that has not been pushed; the index was not stored\",\"detail\":{\"lazarette\":\"E_PARSE\"}}]}\n"
+      }
+    },
+    {
+      "note": "setup: push config.json",
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps/example/blobs/uploads/?digest=sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de",
+        "bodyFile": "config.json"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de",
+          "Location": "/v2/apps/example/blobs/sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de"
+        }
+      }
+    },
+    {
+      "note": "setup: push layer.bin",
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps/example/blobs/uploads/?digest=sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7",
+        "bodyFile": "layer.bin"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7",
+          "Location": "/v2/apps/example/blobs/sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7"
+        }
+      }
+    },
+    {
+      "note": "setup: push child manifest.json",
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/manifests/sha256:c70503b35fd76637bf5fb5723feac32b1f8e5c6dbcea5b7009152d7ee6e17d2c",
+        "headers": {
+          "Content-Type": "application/vnd.oci.image.manifest.v1+json"
+        },
+        "bodyFile": "manifest.json"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:c70503b35fd76637bf5fb5723feac32b1f8e5c6dbcea5b7009152d7ee6e17d2c",
+          "Location": "/v2/apps/example/manifests/sha256:c70503b35fd76637bf5fb5723feac32b1f8e5c6dbcea5b7009152d7ee6e17d2c"
+        }
+      }
+    },
+    {
+      "note": "child manifest exists, but index declares wrong size (1 instead of 472)",
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/manifests/sha256:f95619c8084b2579ee654b5529d05f357394f1b1273ed0a13889b76c7275eed9",
+        "headers": {
+          "Content-Type": "application/vnd.oci.image.index.v1+json"
+        },
+        "bodyFile": "manifest-index.json"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Length": "204",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"MANIFEST_INVALID\",\"message\":\"image index gives a size or media type for a manifest that differs from the stored manifest; the index was not stored\",\"detail\":{\"lazarette\":\"E_PARSE\"}}]}\n"
+      }
+    },
+    {
+      "note": "valid OCI image index is stored",
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/manifests/sha256:2530111c2bb389d0d60bcec8b24375523104cf9b881dae5c50ec2c38fed0fb8d",
+        "headers": {
+          "Content-Type": "application/vnd.oci.image.index.v1+json"
+        },
+        "bodyFile": "manifest-index-valid.json"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:2530111c2bb389d0d60bcec8b24375523104cf9b881dae5c50ec2c38fed0fb8d",
+          "Location": "/v2/apps/example/manifests/sha256:2530111c2bb389d0d60bcec8b24375523104cf9b881dae5c50ec2c38fed0fb8d"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "HEAD",
+        "path": "/v2/apps/example/manifests/sha256:2530111c2bb389d0d60bcec8b24375523104cf9b881dae5c50ec2c38fed0fb8d"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Length": "291",
+          "Content-Type": "application/vnd.oci.image.index.v1+json",
+          "Docker-Content-Digest": "sha256:2530111c2bb389d0d60bcec8b24375523104cf9b881dae5c50ec2c38fed0fb8d"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/manifests/sha256:2530111c2bb389d0d60bcec8b24375523104cf9b881dae5c50ec2c38fed0fb8d"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Length": "291",
+          "Content-Type": "application/vnd.oci.image.index.v1+json",
+          "Docker-Content-Digest": "sha256:2530111c2bb389d0d60bcec8b24375523104cf9b881dae5c50ec2c38fed0fb8d"
+        },
+        "bodyFile": "manifest-index-valid.json"
+      }
+    }
+  ]
+}

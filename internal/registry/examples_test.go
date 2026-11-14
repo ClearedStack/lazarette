@@ -13,8 +13,9 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
-	"github.com/clearedstack/lazarette/internal/store"
+	"github.com/ClearedStack/lazarette/internal/store"
 )
 
 // The saved examples live in testdata/cases. Each file is one rule: a list
@@ -36,9 +37,10 @@ type exampleCase struct {
 }
 
 type exampleStep struct {
-	Note     string          `json:"note,omitempty"`
-	Request  exampleRequest  `json:"request"`
-	Response exampleResponse `json:"response"`
+	Note           string          `json:"note,omitempty"`
+	CollectGarbage bool            `json:"collectGarbage,omitempty"`
+	Request        exampleRequest  `json:"request"`
+	Response       exampleResponse `json:"response"`
 }
 
 type exampleRequest struct {
@@ -108,6 +110,11 @@ func TestSavedExamples(t *testing.T) {
 			}
 			h := newTestHandler(t, t.TempDir())
 			for i := range c.Steps {
+				if c.Steps[i].CollectGarbage {
+					if _, err := h.Store.CollectGarbage(time.Now(), 0); err != nil {
+						t.Fatalf("step %d CollectGarbage: %v", i+1, err)
+					}
+				}
 				runStep(t, h, i, &c.Steps[i])
 			}
 			if *update {

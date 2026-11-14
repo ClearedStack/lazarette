@@ -1,0 +1,531 @@
+{
+  "rule": "Garbage collection retains up to 5 signed digests per app and prunes aged manifests, dangling .sig tags, unreferenced blobs and abandoned uploads.",
+  "steps": [
+    {
+      "note": "setup: push shared config.json",
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps/example/blobs/uploads/?digest=sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de",
+        "bodyFile": "config.json"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de",
+          "Location": "/v2/apps/example/blobs/sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de"
+        }
+      }
+    },
+    {
+      "note": "setup: push shared sig.bin",
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps/example/blobs/uploads/?digest=sha256:0e70a452469375ec8df0c9d3ac470fec3a965a45faab87aedfc1da8cd2642e2c",
+        "bodyFile": "sig.bin"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:0e70a452469375ec8df0c9d3ac470fec3a965a45faab87aedfc1da8cd2642e2c",
+          "Location": "/v2/apps/example/blobs/sha256:0e70a452469375ec8df0c9d3ac470fec3a965a45faab87aedfc1da8cd2642e2c"
+        }
+      }
+    },
+    {
+      "note": "push release 1 layer, manifest and cosign .sig tag",
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps/example/blobs/uploads/?digest=sha256:99a53036b124fa41fd36256f521bd735fa5674356b032f64c3b7024c66843da6",
+        "body": "layer-for-release-1\n"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:99a53036b124fa41fd36256f521bd735fa5674356b032f64c3b7024c66843da6",
+          "Location": "/v2/apps/example/blobs/sha256:99a53036b124fa41fd36256f521bd735fa5674356b032f64c3b7024c66843da6"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/manifests/sha256:1668eec7552475af6ed50bda8b6209f9bc6536d6c5362cc47cf3a7db875df1b9",
+        "headers": {
+          "Content-Type": "application/vnd.oci.image.manifest.v1+json"
+        },
+        "body": "{\"schemaVersion\":2,\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\",\"config\":{\"mediaType\":\"application/vnd.oci.image.config.v1+json\",\"digest\":\"sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de\",\"size\":258},\"layers\":[{\"mediaType\":\"application/vnd.oci.image.layer.v1.tar+gzip\",\"digest\":\"sha256:99a53036b124fa41fd36256f521bd735fa5674356b032f64c3b7024c66843da6\",\"size\":20}]}"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:1668eec7552475af6ed50bda8b6209f9bc6536d6c5362cc47cf3a7db875df1b9",
+          "Location": "/v2/apps/example/manifests/sha256:1668eec7552475af6ed50bda8b6209f9bc6536d6c5362cc47cf3a7db875df1b9"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/manifests/sha256-1668eec7552475af6ed50bda8b6209f9bc6536d6c5362cc47cf3a7db875df1b9.sig",
+        "headers": {
+          "Content-Type": "application/vnd.oci.image.manifest.v1+json"
+        },
+        "body": "{\"schemaVersion\":2,\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\",\"config\":{\"mediaType\":\"application/vnd.oci.image.config.v1+json\",\"digest\":\"sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de\",\"size\":258},\"layers\":[{\"mediaType\":\"application/vnd.dev.cosign.simplesigning.v1+json\",\"digest\":\"sha256:0e70a452469375ec8df0c9d3ac470fec3a965a45faab87aedfc1da8cd2642e2c\",\"size\":67}],\"annotations\":{\"release\":\"1\"}}"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:b7f2b3b9f1b249abde9370999655a5eee5504b02e730b50e0439660b7c4d570d",
+          "Location": "/v2/apps/example/manifests/sha256:b7f2b3b9f1b249abde9370999655a5eee5504b02e730b50e0439660b7c4d570d"
+        }
+      }
+    },
+    {
+      "note": "push release 2 layer, manifest and cosign .sig tag",
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps/example/blobs/uploads/?digest=sha256:67ed1efc3d3888b10a568c369ef56b71ab15d4fa961f647099fef871855e7624",
+        "body": "layer-for-release-2\n"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:67ed1efc3d3888b10a568c369ef56b71ab15d4fa961f647099fef871855e7624",
+          "Location": "/v2/apps/example/blobs/sha256:67ed1efc3d3888b10a568c369ef56b71ab15d4fa961f647099fef871855e7624"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/manifests/sha256:21cb38bc318f433b9e6e384c00f8e63a66b7b9e429e7c8e6a900f597cfde9fba",
+        "headers": {
+          "Content-Type": "application/vnd.oci.image.manifest.v1+json"
+        },
+        "body": "{\"schemaVersion\":2,\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\",\"config\":{\"mediaType\":\"application/vnd.oci.image.config.v1+json\",\"digest\":\"sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de\",\"size\":258},\"layers\":[{\"mediaType\":\"application/vnd.oci.image.layer.v1.tar+gzip\",\"digest\":\"sha256:67ed1efc3d3888b10a568c369ef56b71ab15d4fa961f647099fef871855e7624\",\"size\":20}]}"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:21cb38bc318f433b9e6e384c00f8e63a66b7b9e429e7c8e6a900f597cfde9fba",
+          "Location": "/v2/apps/example/manifests/sha256:21cb38bc318f433b9e6e384c00f8e63a66b7b9e429e7c8e6a900f597cfde9fba"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/manifests/sha256-21cb38bc318f433b9e6e384c00f8e63a66b7b9e429e7c8e6a900f597cfde9fba.sig",
+        "headers": {
+          "Content-Type": "application/vnd.oci.image.manifest.v1+json"
+        },
+        "body": "{\"schemaVersion\":2,\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\",\"config\":{\"mediaType\":\"application/vnd.oci.image.config.v1+json\",\"digest\":\"sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de\",\"size\":258},\"layers\":[{\"mediaType\":\"application/vnd.dev.cosign.simplesigning.v1+json\",\"digest\":\"sha256:0e70a452469375ec8df0c9d3ac470fec3a965a45faab87aedfc1da8cd2642e2c\",\"size\":67}],\"annotations\":{\"release\":\"2\"}}"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:269859e2355817957c7de641548bb56be9466d3c9fcc29f0751fb784fcb4b5ca",
+          "Location": "/v2/apps/example/manifests/sha256:269859e2355817957c7de641548bb56be9466d3c9fcc29f0751fb784fcb4b5ca"
+        }
+      }
+    },
+    {
+      "note": "push release 3 layer, manifest and cosign .sig tag",
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps/example/blobs/uploads/?digest=sha256:cae996904a6bce6a6e92301da115198231dfbd524416ab1d59acc86278604be1",
+        "body": "layer-for-release-3\n"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:cae996904a6bce6a6e92301da115198231dfbd524416ab1d59acc86278604be1",
+          "Location": "/v2/apps/example/blobs/sha256:cae996904a6bce6a6e92301da115198231dfbd524416ab1d59acc86278604be1"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/manifests/sha256:68b2e97208c48e480a81eea78d6bd9df427ab157f7ac5ac90e5a24080fd8c896",
+        "headers": {
+          "Content-Type": "application/vnd.oci.image.manifest.v1+json"
+        },
+        "body": "{\"schemaVersion\":2,\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\",\"config\":{\"mediaType\":\"application/vnd.oci.image.config.v1+json\",\"digest\":\"sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de\",\"size\":258},\"layers\":[{\"mediaType\":\"application/vnd.oci.image.layer.v1.tar+gzip\",\"digest\":\"sha256:cae996904a6bce6a6e92301da115198231dfbd524416ab1d59acc86278604be1\",\"size\":20}]}"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:68b2e97208c48e480a81eea78d6bd9df427ab157f7ac5ac90e5a24080fd8c896",
+          "Location": "/v2/apps/example/manifests/sha256:68b2e97208c48e480a81eea78d6bd9df427ab157f7ac5ac90e5a24080fd8c896"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/manifests/sha256-68b2e97208c48e480a81eea78d6bd9df427ab157f7ac5ac90e5a24080fd8c896.sig",
+        "headers": {
+          "Content-Type": "application/vnd.oci.image.manifest.v1+json"
+        },
+        "body": "{\"schemaVersion\":2,\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\",\"config\":{\"mediaType\":\"application/vnd.oci.image.config.v1+json\",\"digest\":\"sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de\",\"size\":258},\"layers\":[{\"mediaType\":\"application/vnd.dev.cosign.simplesigning.v1+json\",\"digest\":\"sha256:0e70a452469375ec8df0c9d3ac470fec3a965a45faab87aedfc1da8cd2642e2c\",\"size\":67}],\"annotations\":{\"release\":\"3\"}}"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:07979511b27e106834249832d0b34515d6d7225ca86091750930cfcb4dab9e13",
+          "Location": "/v2/apps/example/manifests/sha256:07979511b27e106834249832d0b34515d6d7225ca86091750930cfcb4dab9e13"
+        }
+      }
+    },
+    {
+      "note": "push release 4 layer, manifest and cosign .sig tag",
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps/example/blobs/uploads/?digest=sha256:61ec04c2a7e2828f20aedf940a09f3ce49d45604100a68cea886f55990cd0e3f",
+        "body": "layer-for-release-4\n"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:61ec04c2a7e2828f20aedf940a09f3ce49d45604100a68cea886f55990cd0e3f",
+          "Location": "/v2/apps/example/blobs/sha256:61ec04c2a7e2828f20aedf940a09f3ce49d45604100a68cea886f55990cd0e3f"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/manifests/sha256:d44caf7f034319f23fb33ca0b5069a16ba9ed5ec03a25c6ef7b47e793b75369e",
+        "headers": {
+          "Content-Type": "application/vnd.oci.image.manifest.v1+json"
+        },
+        "body": "{\"schemaVersion\":2,\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\",\"config\":{\"mediaType\":\"application/vnd.oci.image.config.v1+json\",\"digest\":\"sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de\",\"size\":258},\"layers\":[{\"mediaType\":\"application/vnd.oci.image.layer.v1.tar+gzip\",\"digest\":\"sha256:61ec04c2a7e2828f20aedf940a09f3ce49d45604100a68cea886f55990cd0e3f\",\"size\":20}]}"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:d44caf7f034319f23fb33ca0b5069a16ba9ed5ec03a25c6ef7b47e793b75369e",
+          "Location": "/v2/apps/example/manifests/sha256:d44caf7f034319f23fb33ca0b5069a16ba9ed5ec03a25c6ef7b47e793b75369e"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/manifests/sha256-d44caf7f034319f23fb33ca0b5069a16ba9ed5ec03a25c6ef7b47e793b75369e.sig",
+        "headers": {
+          "Content-Type": "application/vnd.oci.image.manifest.v1+json"
+        },
+        "body": "{\"schemaVersion\":2,\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\",\"config\":{\"mediaType\":\"application/vnd.oci.image.config.v1+json\",\"digest\":\"sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de\",\"size\":258},\"layers\":[{\"mediaType\":\"application/vnd.dev.cosign.simplesigning.v1+json\",\"digest\":\"sha256:0e70a452469375ec8df0c9d3ac470fec3a965a45faab87aedfc1da8cd2642e2c\",\"size\":67}],\"annotations\":{\"release\":\"4\"}}"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:e17b3a7347b1c6d461c98de51bb95a85875ad84c5f0decc4774d7e196e760361",
+          "Location": "/v2/apps/example/manifests/sha256:e17b3a7347b1c6d461c98de51bb95a85875ad84c5f0decc4774d7e196e760361"
+        }
+      }
+    },
+    {
+      "note": "push release 5 layer, manifest and cosign .sig tag",
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps/example/blobs/uploads/?digest=sha256:9c12ac871da75dec08dcdc473d03f3b38736dd0234524515f668fcc7eaa7656e",
+        "body": "layer-for-release-5\n"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:9c12ac871da75dec08dcdc473d03f3b38736dd0234524515f668fcc7eaa7656e",
+          "Location": "/v2/apps/example/blobs/sha256:9c12ac871da75dec08dcdc473d03f3b38736dd0234524515f668fcc7eaa7656e"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/manifests/sha256:661500b0d6607c75b6291c0bbc063d338f91a96d53273ca296e1300aaf627a01",
+        "headers": {
+          "Content-Type": "application/vnd.oci.image.manifest.v1+json"
+        },
+        "body": "{\"schemaVersion\":2,\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\",\"config\":{\"mediaType\":\"application/vnd.oci.image.config.v1+json\",\"digest\":\"sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de\",\"size\":258},\"layers\":[{\"mediaType\":\"application/vnd.oci.image.layer.v1.tar+gzip\",\"digest\":\"sha256:9c12ac871da75dec08dcdc473d03f3b38736dd0234524515f668fcc7eaa7656e\",\"size\":20}]}"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:661500b0d6607c75b6291c0bbc063d338f91a96d53273ca296e1300aaf627a01",
+          "Location": "/v2/apps/example/manifests/sha256:661500b0d6607c75b6291c0bbc063d338f91a96d53273ca296e1300aaf627a01"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/manifests/sha256-661500b0d6607c75b6291c0bbc063d338f91a96d53273ca296e1300aaf627a01.sig",
+        "headers": {
+          "Content-Type": "application/vnd.oci.image.manifest.v1+json"
+        },
+        "body": "{\"schemaVersion\":2,\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\",\"config\":{\"mediaType\":\"application/vnd.oci.image.config.v1+json\",\"digest\":\"sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de\",\"size\":258},\"layers\":[{\"mediaType\":\"application/vnd.dev.cosign.simplesigning.v1+json\",\"digest\":\"sha256:0e70a452469375ec8df0c9d3ac470fec3a965a45faab87aedfc1da8cd2642e2c\",\"size\":67}],\"annotations\":{\"release\":\"5\"}}"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:b78bba8aa4b799765531b35024490ec12271a19d2729cddec33e994e2dfff431",
+          "Location": "/v2/apps/example/manifests/sha256:b78bba8aa4b799765531b35024490ec12271a19d2729cddec33e994e2dfff431"
+        }
+      }
+    },
+    {
+      "note": "push release 6 layer, manifest and cosign .sig tag",
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps/example/blobs/uploads/?digest=sha256:06bb6d65c54d5e693349ff147252979cbf7465ac6eac0845275894adfdc5eea8",
+        "body": "layer-for-release-6\n"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:06bb6d65c54d5e693349ff147252979cbf7465ac6eac0845275894adfdc5eea8",
+          "Location": "/v2/apps/example/blobs/sha256:06bb6d65c54d5e693349ff147252979cbf7465ac6eac0845275894adfdc5eea8"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/manifests/sha256:299a4c77b3c850425c1f203b275806aa913f48a3d027c00b3b28c2b20bcb93c0",
+        "headers": {
+          "Content-Type": "application/vnd.oci.image.manifest.v1+json"
+        },
+        "body": "{\"schemaVersion\":2,\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\",\"config\":{\"mediaType\":\"application/vnd.oci.image.config.v1+json\",\"digest\":\"sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de\",\"size\":258},\"layers\":[{\"mediaType\":\"application/vnd.oci.image.layer.v1.tar+gzip\",\"digest\":\"sha256:06bb6d65c54d5e693349ff147252979cbf7465ac6eac0845275894adfdc5eea8\",\"size\":20}]}"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:299a4c77b3c850425c1f203b275806aa913f48a3d027c00b3b28c2b20bcb93c0",
+          "Location": "/v2/apps/example/manifests/sha256:299a4c77b3c850425c1f203b275806aa913f48a3d027c00b3b28c2b20bcb93c0"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/manifests/sha256-299a4c77b3c850425c1f203b275806aa913f48a3d027c00b3b28c2b20bcb93c0.sig",
+        "headers": {
+          "Content-Type": "application/vnd.oci.image.manifest.v1+json"
+        },
+        "body": "{\"schemaVersion\":2,\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\",\"config\":{\"mediaType\":\"application/vnd.oci.image.config.v1+json\",\"digest\":\"sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de\",\"size\":258},\"layers\":[{\"mediaType\":\"application/vnd.dev.cosign.simplesigning.v1+json\",\"digest\":\"sha256:0e70a452469375ec8df0c9d3ac470fec3a965a45faab87aedfc1da8cd2642e2c\",\"size\":67}],\"annotations\":{\"release\":\"6\"}}"
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Content-Digest": "sha256:1b6ce2c8a536eca74dbd6bf42dda7b521d93e8494b17e30ee9f7c5ff166a638a",
+          "Location": "/v2/apps/example/manifests/sha256:1b6ce2c8a536eca74dbd6bf42dda7b521d93e8494b17e30ee9f7c5ff166a638a"
+        }
+      }
+    },
+    {
+      "note": "open an upload session that is abandoned before garbage collection",
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps/example/blobs/uploads/"
+      },
+      "response": {
+        "status": 202,
+        "headers": {
+          "Content-Length": "0",
+          "Docker-Upload-Uuid": "00000000000000000000000000000009",
+          "Location": "/v2/apps/example/blobs/uploads/00000000000000000000000000000009",
+          "Range": "0-0"
+        }
+      }
+    },
+    {
+      "note": "retained digest list holds only releases 2..6 in oldest-to-newest order",
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/digests/list"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Length": "406",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"name\":\"apps/example\",\"digests\":[\"sha256:21cb38bc318f433b9e6e384c00f8e63a66b7b9e429e7c8e6a900f597cfde9fba\",\"sha256:68b2e97208c48e480a81eea78d6bd9df427ab157f7ac5ac90e5a24080fd8c896\",\"sha256:d44caf7f034319f23fb33ca0b5069a16ba9ed5ec03a25c6ef7b47e793b75369e\",\"sha256:661500b0d6607c75b6291c0bbc063d338f91a96d53273ca296e1300aaf627a01\",\"sha256:299a4c77b3c850425c1f203b275806aa913f48a3d027c00b3b28c2b20bcb93c0\"]}\n"
+      }
+    },
+    {
+      "note": "run garbage collection: release 1 manifest, .sig tag, signature manifest, unique layer and abandoned upload are pruned",
+      "collectGarbage": true,
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/manifests/sha256:1668eec7552475af6ed50bda8b6209f9bc6536d6c5362cc47cf3a7db875df1b9"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Length": "88",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"MANIFEST_UNKNOWN\",\"message\":\"manifest is not in this repository\"}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/manifests/sha256-1668eec7552475af6ed50bda8b6209f9bc6536d6c5362cc47cf3a7db875df1b9.sig"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Length": "88",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"MANIFEST_UNKNOWN\",\"message\":\"manifest is not in this repository\"}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/manifests/sha256:b7f2b3b9f1b249abde9370999655a5eee5504b02e730b50e0439660b7c4d570d"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Length": "88",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"MANIFEST_UNKNOWN\",\"message\":\"manifest is not in this repository\"}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/blobs/sha256:99a53036b124fa41fd36256f521bd735fa5674356b032f64c3b7024c66843da6"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Length": "78",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"BLOB_UNKNOWN\",\"message\":\"blob is not in this registry\"}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/blobs/uploads/00000000000000000000000000000009"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Length": "84",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"BLOB_UPLOAD_UNKNOWN\",\"message\":\"upload session is not known\"}]}\n"
+      }
+    },
+    {
+      "note": "releases 2..6, their layers, their .sig tags and shared blobs remain intact",
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/manifests/sha256:21cb38bc318f433b9e6e384c00f8e63a66b7b9e429e7c8e6a900f597cfde9fba"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Length": "400",
+          "Content-Type": "application/vnd.oci.image.manifest.v1+json",
+          "Docker-Content-Digest": "sha256:21cb38bc318f433b9e6e384c00f8e63a66b7b9e429e7c8e6a900f597cfde9fba"
+        },
+        "body": "{\"schemaVersion\":2,\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\",\"config\":{\"mediaType\":\"application/vnd.oci.image.config.v1+json\",\"digest\":\"sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de\",\"size\":258},\"layers\":[{\"mediaType\":\"application/vnd.oci.image.layer.v1.tar+gzip\",\"digest\":\"sha256:67ed1efc3d3888b10a568c369ef56b71ab15d4fa961f647099fef871855e7624\",\"size\":20}]}"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/manifests/sha256:299a4c77b3c850425c1f203b275806aa913f48a3d027c00b3b28c2b20bcb93c0"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Length": "400",
+          "Content-Type": "application/vnd.oci.image.manifest.v1+json",
+          "Docker-Content-Digest": "sha256:299a4c77b3c850425c1f203b275806aa913f48a3d027c00b3b28c2b20bcb93c0"
+        },
+        "body": "{\"schemaVersion\":2,\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\",\"config\":{\"mediaType\":\"application/vnd.oci.image.config.v1+json\",\"digest\":\"sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de\",\"size\":258},\"layers\":[{\"mediaType\":\"application/vnd.oci.image.layer.v1.tar+gzip\",\"digest\":\"sha256:06bb6d65c54d5e693349ff147252979cbf7465ac6eac0845275894adfdc5eea8\",\"size\":20}]}"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/blobs/sha256:67ed1efc3d3888b10a568c369ef56b71ab15d4fa961f647099fef871855e7624"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Accept-Ranges": "bytes",
+          "Content-Length": "20",
+          "Content-Type": "application/octet-stream",
+          "Docker-Content-Digest": "sha256:67ed1efc3d3888b10a568c369ef56b71ab15d4fa961f647099fef871855e7624",
+          "Etag": "\"sha256:67ed1efc3d3888b10a568c369ef56b71ab15d4fa961f647099fef871855e7624\""
+        },
+        "body": "layer-for-release-2\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/blobs/sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Accept-Ranges": "bytes",
+          "Content-Length": "258",
+          "Content-Type": "application/octet-stream",
+          "Docker-Content-Digest": "sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de",
+          "Etag": "\"sha256:9ee20c2128aa6883fce67605abbca5f2059f26ada628ee2cbbc0e9e7bdcdc4de\""
+        },
+        "body": "{\n  \"architecture\": \"amd64\",\n  \"os\": \"linux\",\n  \"config\": {\n    \"Entrypoint\": [\n      \"/example/app\"\n    ]\n  },\n  \"rootfs\": {\n    \"type\": \"layers\",\n    \"diff_ids\": [\n      \"sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7\"\n    ]\n  }\n}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v2/apps/example/tags/list"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Length": "423",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"name\":\"apps/example\",\"tags\":[\"sha256-21cb38bc318f433b9e6e384c00f8e63a66b7b9e429e7c8e6a900f597cfde9fba.sig\",\"sha256-299a4c77b3c850425c1f203b275806aa913f48a3d027c00b3b28c2b20bcb93c0.sig\",\"sha256-661500b0d6607c75b6291c0bbc063d338f91a96d53273ca296e1300aaf627a01.sig\",\"sha256-68b2e97208c48e480a81eea78d6bd9df427ab157f7ac5ac90e5a24080fd8c896.sig\",\"sha256-d44caf7f034319f23fb33ca0b5069a16ba9ed5ec03a25c6ef7b47e793b75369e.sig\"]}\n"
+      }
+    }
+  ]
+}

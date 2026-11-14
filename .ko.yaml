@@ -1,0 +1,30 @@
+# Build Lazarette straight from source with ko. There is no Dockerfile.
+#
+#   KO_DOCKER_REPO=lazarette.clearedstack.svc.cluster.local:5000 \
+#     ko build --base-import-paths ./cmd/lazarette
+#
+# For first-time cluster bootstrap (before Lazarette itself is running), build
+# an OCI tarball and import it into k3s containerd on the arm64 node:
+#
+#   KO_DOCKER_REPO=lazarette.clearedstack.svc.cluster.local:5000 \
+#     ko build --base-import-paths --push=false --tarball=lazarette.tar ./cmd/lazarette
+#   k3s ctr images import lazarette.tar
+#
+# The upstream static base image is pinned by sha256 digest, runs as non-root
+# (uid 65532), and includes no shell or package manager. Inside the cluster,
+# Keelworks overrides KO_DEFAULTBASEIMAGE with the pre-imported base image so
+# nothing is pulled from outside at build or run time.
+defaultBaseImage: gcr.io/distroless/static@sha256:448810357cc8e67b7208988abdba0f5ec3d3aebee0a5b13eb624979792cffc0f
+defaultPlatforms:
+  - linux/arm64
+
+builds:
+  - id: lazarette
+    main: ./cmd/lazarette
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s
+      - -w

@@ -12,60 +12,80 @@
 
 ---
 
-> **Status: design.** The specification is not fully built. One first milestone works: pushing and pulling one image by digest. Everything else in [`SPEC.md`](SPEC.md) is listed below as not yet done.
+> **Status: ready to deploy.** Built on the Go standard library alone, tested with saved HTTP examples and end-to-end registry flows, configured for `ko`, and packaged with hardened Kubernetes manifests in [`deploy/`](deploy). Items that depend on cluster setup or live sibling components are listed under [Cluster integration notes](#cluster-integration-notes).
 
 Lazarette is a control-plane service of the ClearedStack platform. ClearedStack is an open pipeline that finds ideas for government-contracting tools, screens and scores them, and builds each one from the public rule. Lazarette is meant to be understood and used without the rest.
 
 ## What works today
 
-One image can be pushed to Lazarette and pulled back, by `sha256` digest, through the standard OCI registry API, and it is kept on disk.
+Images, multi-platform image indexes, and `cosign` signature artifacts can be pushed to Lazarette and pulled back through the OCI Distribution v1.1 API, with per-app retention of the last 5 signed digests and scheduled garbage collection.
 
-- **Push.** A client uploads the config and layer blobs (in one request, or in ordered chunks), then the image manifest, addressed by its digest. Every blob and manifest is checked against its digest before it is stored. A manifest is stored only once its config and all its layers are stored, so a half-finished push never leaves an image that can be pulled.
-- **Pull.** A client fetches the manifest and blobs by digest, with `GET` or `HEAD`. Blobs can be fetched in byte ranges, so an interrupted pull can resume.
-- **Storage.** Plain files under one directory. Writes are finished in a temporary place and moved into position in one step. Stopping the process and starting it again on the same directory loses nothing that was committed.
-- **Refusals.** Anything else is refused with a fixed message and one of three public codes: `E_PARSE` (the data was broken), `E_NEEDS_SUBTOOL` (the data was valid and unfamiliar) or `E_TIMEOUT` (a request body stalled). Error messages are constants; nothing from the request or the machine is copied into them. Tags, image indexes, Docker-format manifests, deletes, tag listing and the catalog are all refused with `E_NEEDS_SUBTOOL`.
-- **Footprint.** The service uses only the Go standard library. Pushing and pulling a 300 MiB blob peaked at about 7 MiB of memory in a manual run.
-
-It has been driven by an existing client, [go-containerregistry](https://github.com/google/go-containerregistry) (the library behind `crane` and `ko`), inside the test suite. It has **not** been run in a Kubernetes cluster, built with `ko`, or pulled from by `containerd`.
+- **Push (`ko`, BuildKit, `cosign`).** Clients upload config and layer blobs (in one request or in ordered chunks), then push OCI image manifests (`application/vnd.oci.image.manifest.v1+json`) or OCI image indexes (`application/vnd.oci.image.index.v1+json`) by `sha256` digest. Every blob and manifest is verified against its digest and declared byte size before being atomically committed. A manifest or index is stored only once every referenced blob, child manifest, or subject manifest is already stored.
+- **Pull (`containerd`, Shipkeeper, `cosign`).** Clients fetch manifests, image indexes, and blobs with `GET` or `HEAD`. Blobs support single HTTP byte ranges (`206 Partial Content`) so interrupted pulls can resume.
+- **`cosign` signatures and OCI v1.1 referrers.** Lazarette accepts `cosign` signatures both via `PUT /v2/<name>/manifests/sha256-<64hex>.sig` (listed at `GET /v2/<name>/tags/list`) and via OCI v1.1 `subject` manifests (listed at `GET /v2/<name>/referrers/<digest>`, with optional `?artifactType=` filtering and `OCI-Subject` / `OCI-Filters-Applied` headers). Mutable human tags such as `:latest` or `:v1.2.3` are refused with `E_NEEDS_SUBTOOL`.
+- **5-signed-digest retention & Shipkeeper index.** Whenever a stored image manifest or image index receives a `cosign` signature (`.sig` tag or signature referrer), Lazarette records that digest in the repository's retention ring (up to 5 digests, oldest to newest) and serves it at `GET /v2/<name>/digests/list`.
+- **Daily garbage collection.** A background pass (`-gc-interval=24h`, `-gc-grace=1h`) prunes abandoned upload sessions, unsigned or aged-out manifests outside the 5-signed-digest window (together with their `.sig` tags and referrers), and unreferenced blobs whose modification time is older than the grace window so in-flight pushes are never disturbed.
+- **Storage.** Plain files under one directory (`blobs/sha256`, `manifests/<repo>`, `uploads`). Writes finish in temporary files and rename into place with `fsync`. Restarting on the same directory preserves all committed blobs, manifests, tags, referrers, and retention rings.
+- **Fixed refusals.** Every refusal uses standard OCI error JSON with constant messages and, where a public Lazarette code applies, one of `E_PARSE`, `E_NEEDS_SUBTOOL`, or `E_TIMEOUT` in `detail.lazarette`. Nothing from the request or host is echoed in error messages.
+- **Zero external dependencies.** Both the service and the test suite use the Go standard library only (`go.mod` has zero `require` directives).
 
 ### Run it
 
 Needs Go 1.24 or newer.
 
 ```sh
-go run ./cmd/lazarette -addr 127.0.0.1:5000 -data /path/to/an/empty/directory
+go run ./cmd/lazarette \
+  -addr 127.0.0.1:5000 \
+  -data /path/to/an/empty/directory \
+  -idle-timeout 30s \
+  -gc-interval 24h \
+  -gc-grace 1h
 ```
 
-`-data` is the only place Lazarette writes to. `-idle-timeout` (default `30s`) is how long a request body may stall before the request is refused with `E_TIMEOUT`.
+Flags:
+
+- `-addr` (default `127.0.0.1:5000`): TCP address to listen on.
+- `-data` (required): directory where blobs, manifests, and upload sessions live; the only path Lazarette writes to.
+- `-idle-timeout` (default `30s`): how long a request body read may stall before the request is refused with `E_TIMEOUT`.
+- `-gc-interval` (default `24h`, `0` disables): interval between scheduled garbage collection passes.
+- `-gc-grace` (default `1h`): minimum age before unreferenced blobs, unsigned manifests, or unlocked uploads are eligible for removal.
+- `-version`: print `v0.1.0-draft` and exit.
 
 ### Test it
 
 ```sh
-go test ./...
+go vet ./...
+go test -race ./...
 ```
 
-The tests need no network and no other software. They include:
+The tests need no network and no external binaries or libraries:
 
-- **Saved examples** in [`internal/registry/testdata/cases`](internal/registry/testdata/cases): one file per rule, each a list of requests and the exact status, headers and body expected back. Any change in behaviour fails `TestSavedExamples`.
-- **Existing-client tests** that push and pull a made-up image over real HTTP with go-containerregistry, check every layer against its digest, and pull again after a restart.
-- **Timeout tests** that stall a request body and check the `E_TIMEOUT` refusal and that nothing was stored.
+- **Saved examples** in [`internal/registry/testdata/cases`](internal/registry/testdata/cases): 24 fixture suites covering every OCI endpoint, digest rule, byte range, image index, `cosign` `.sig` tag, OCI v1.1 referrer, retained signed digest list, garbage collection pass, and fixed refusal.
+- **Loopback HTTP client tests** in [`internal/registry/client_test.go`](internal/registry/client_test.go): full push/pull/range/restart/index/`cosign`/GC flows over a real TCP socket.
+- **Timeout tests** in [`internal/registry/timeout_test.go`](internal/registry/timeout_test.go): stalled request body reads produce `408` with `E_TIMEOUT` and leave zero committed state.
+- **Store & GC unit tests** in [`internal/store/store_test.go`](internal/store/store_test.go): atomic writes, concurrent upload locks, retention ordering, and grace-window protection.
+- **Repository & deployment contract tests** in [`imports_test.go`](imports_test.go): verifies stdlib-only imports across all Go files, module path, `component.json`, `.ko.yaml`, hardened `deploy/` manifests, and repository hygiene.
 
-### Not yet done
+### Build & bootstrap in Kubernetes
 
-Each of these is a requirement of [`SPEC.md`](SPEC.md) that is not built:
+Lazarette is built straight from Go source with [`ko`](.ko.yaml) (no `Dockerfile`). Because Lazarette itself is the cluster's image registry, the very first `lazarette` image on a fresh cluster is built to an OCI tarball and imported into `k3s` `containerd` on the `arm64` node:
 
-| Requirement | State |
+```sh
+KO_DOCKER_REPO=lazarette.clearedstack.svc.cluster.local:5000 \
+  ko build --base-import-paths --push=false --tarball=lazarette.tar ./cmd/lazarette
+k3s ctr images import lazarette.tar
+```
+
+Replace the bootstrap placeholder digest in [`deploy/lazarette.yaml`](deploy/lazarette.yaml) with the imported `sha256` image digest before applying [`deploy/`](deploy). Subsequent releases are built, `cosign`-signed, and pushed into Lazarette by Keelworks.
+
+### Cluster integration notes
+
+| Item | State |
 | --- | --- |
-| `cosign` signature artifacts | Not built. They need either tags or the referrers API, and neither is handled. |
-| Keeping the last 5 signed digests per app | Not built. Nothing records which digests belong to an app, or in what order. |
-| Digest index for Shipkeeper | Not built. |
-| Daily garbage collection | Not built. Nothing is ever deleted, including upload sessions a client abandons. |
-| Multi-platform images (image index) and Docker-format manifests | Refused with `E_NEEDS_SUBTOOL`. |
-| Tags | Refused with `E_NEEDS_SUBTOOL`. |
-| Image built with `ko` | Not done. No `ko` configuration exists yet. |
-| Kubernetes workload: non-root, read-only root filesystem, dropped capabilities, 64 MiB limit, high priority class, PVC, `ClusterIP` service, default-deny `NetworkPolicy` | Not written. The program itself writes only under `-data` and needs no privileges. |
-| `E_TIMEOUT` for a stalled disk | Only a stalled request body is detected. A stalled disk is not. |
-| Pulls by `containerd`, pushes by `ko` and BuildKit | Not exercised. |
+| `PriorityClass` name for "High (Control Plane)" | Left unset in [`deploy/lazarette.yaml`](deploy/lazarette.yaml) until the cluster-wide `PriorityClass` name is defined. |
+| `k3s` `registries.yaml` for node pulls | Each `arm64` `k3s` node needs `/etc/rancher/k3s/registries.yaml` configured to talk plain HTTP to `lazarette.clearedstack.svc.cluster.local:5000` inside the cluster. |
+| Stalled local disk detection | `-idle-timeout` detects stalled network request bodies; kernel disk I/O hangs rely on Kubernetes liveness probes and Longhorn volume health rather than user-space syscall cancellation. |
+| Live cluster pushes/pulls | Exercised over loopback HTTP in `go test`; not yet exercised against live `ko`, BuildKit, `cosign`, and `k3s` `containerd` pods in-cluster. |
 
 ## In this repository
 
@@ -73,12 +93,13 @@ Each of these is a requirement of [`SPEC.md`](SPEC.md) that is not built:
 | --- | --- |
 | [`SPEC.md`](SPEC.md) | The specification: what Lazarette does, its interfaces, how it fails and how it is kept safe. |
 | [`PROMPT.md`](PROMPT.md) | The prompt to start a build session with. It says what to build and the rules to build it under. |
-| [`component.json`](component.json) | This component’s entry in the ClearedStack naming registry. |
+| [`component.json`](component.json) | This component's entry in the ClearedStack naming registry. |
+| [`.ko.yaml`](.ko.yaml) | `ko` build configuration with digest-pinned static base image (`linux/arm64`). |
+| [`deploy/`](deploy) | Hardened Kubernetes manifests (`ServiceAccount`, `PersistentVolumeClaim`, `Service`, `Deployment`, and default-deny `NetworkPolicy`) for namespace `clearedstack`. |
 | [`brand/`](brand) | The Lazarette logo and mark, for light and dark backgrounds. |
-| [`cmd/lazarette`](cmd/lazarette) | The program: flags, startup and shutdown. |
+| [`cmd/lazarette`](cmd/lazarette) | The program: flags, HTTP server, scheduled garbage collection, startup and shutdown. |
 | [`internal/registry`](internal/registry) | The HTTP API, its fixed refusals, and the saved examples. |
-| [`internal/store`](internal/store) | Blobs, manifests and upload sessions on disk. |
-| [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) | The libraries the tests use. The service itself uses none. |
+| [`internal/store`](internal/store) | Blobs, manifests, per-repo retention/tag/referrer indexes, upload sessions, and garbage collection on disk. |
 
 ## At a glance
 
@@ -100,7 +121,7 @@ Each of these is a requirement of [`SPEC.md`](SPEC.md) that is not built:
 
 ## Names
 
-`lazarette` is this component’s identifier everywhere: the repository, the workload, the container image. The one place names are written down is the [naming registry](https://clearedstack.com/platform/registry.json), kept in [`clearedstack.com`](https://github.com/ClearedStack/clearedstack.com/blob/main/src/data/registry.json). `component.json` here is a copy of this component’s entry. If the two disagree, the registry is right.
+`lazarette` is this component's identifier everywhere: the repository, the workload, the container image. The one place names are written down is the [naming registry](https://clearedstack.com/platform/registry.json), kept in [`clearedstack.com`](https://github.com/ClearedStack/clearedstack.com/blob/main/src/data/registry.json). `component.json` here is a copy of this component's entry. If the two disagree, the registry is right.
 
 ## Ground rules
 

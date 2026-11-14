@@ -1,5 +1,5 @@
 {
-  "rule": "Only application/vnd.oci.image.manifest.v1+json is handled. A Docker v2 manifest or an OCI image index is valid and unfamiliar: E_NEEDS_SUBTOOL, and not stored.",
+  "rule": "Only OCI image manifests and OCI image indexes are handled. Docker v2 manifests and manifest lists are valid and unfamiliar: E_NEEDS_SUBTOOL, and not stored.",
   "steps": [
     {
       "note": "setup: push config.json in one request",
@@ -45,28 +45,28 @@
       "response": {
         "status": 415,
         "headers": {
-          "Content-Length": "182",
+          "Content-Length": "181",
           "Content-Type": "application/json"
         },
-        "body": "{\"errors\":[{\"code\":\"UNSUPPORTED\",\"message\":\"manifest media type is not application/vnd.oci.image.manifest.v1+json, the only type handled\",\"detail\":{\"lazarette\":\"E_NEEDS_SUBTOOL\"}}]}\n"
+        "body": "{\"errors\":[{\"code\":\"UNSUPPORTED\",\"message\":\"manifest media type is not an OCI image manifest or OCI image index, the only types handled\",\"detail\":{\"lazarette\":\"E_NEEDS_SUBTOOL\"}}]}\n"
       }
     },
     {
       "request": {
         "method": "PUT",
-        "path": "/v2/apps/example/manifests/sha256:f95619c8084b2579ee654b5529d05f357394f1b1273ed0a13889b76c7275eed9",
+        "path": "/v2/apps/example/manifests/sha256:8ebbd8da4c27edcfba4974b6de70efed38e3ae01cac7adad27261be7af5c2e69",
         "headers": {
-          "Content-Type": "application/vnd.oci.image.index.v1+json"
+          "Content-Type": "application/vnd.docker.distribution.manifest.list.v2+json"
         },
-        "bodyFile": "manifest-index.json"
+        "bodyFile": "manifest-docker-list.json"
       },
       "response": {
         "status": 415,
         "headers": {
-          "Content-Length": "182",
+          "Content-Length": "181",
           "Content-Type": "application/json"
         },
-        "body": "{\"errors\":[{\"code\":\"UNSUPPORTED\",\"message\":\"manifest media type is not application/vnd.oci.image.manifest.v1+json, the only type handled\",\"detail\":{\"lazarette\":\"E_NEEDS_SUBTOOL\"}}]}\n"
+        "body": "{\"errors\":[{\"code\":\"UNSUPPORTED\",\"message\":\"manifest media type is not an OCI image manifest or OCI image index, the only types handled\",\"detail\":{\"lazarette\":\"E_NEEDS_SUBTOOL\"}}]}\n"
       }
     },
     {
@@ -86,7 +86,7 @@
     {
       "request": {
         "method": "GET",
-        "path": "/v2/apps/example/manifests/sha256:f95619c8084b2579ee654b5529d05f357394f1b1273ed0a13889b76c7275eed9"
+        "path": "/v2/apps/example/manifests/sha256:8ebbd8da4c27edcfba4974b6de70efed38e3ae01cac7adad27261be7af5c2e69"
       },
       "response": {
         "status": 404,
