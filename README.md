@@ -105,7 +105,6 @@ Replace the bootstrap placeholder digests in [`deploy/lazarette.yaml`](deploy/la
 | [`.ko.yaml`](.ko.yaml) | `ko` build configuration (`lazarette` and `lazarette-backup`) with digest-pinned static base image (`linux/arm64`). |
 | [`kustomization.yaml`](kustomization.yaml) | Kustomize entrypoint listing all Kubernetes manifests in `deploy/`. |
 | [`deploy/`](deploy) | Hardened Kubernetes manifests (`PriorityClass`, `ServiceAccount`, `PersistentVolumeClaim`, `Service`, `Deployment`, backup/drill `CronJob`s, and default-deny `NetworkPolicy`) for namespace `clearedstack`. |
-| [`.github/workflows/tests.yml`](.github/workflows/tests.yml) | Read-only GitHub Actions CI running `gofmt`, `go vet`, `go test -race`, static `linux/arm64` cross-compilation, and fuzz smoke passes. |
 | [`brand/`](brand) | The Lazarette logo and mark, for light and dark backgrounds. |
 | [`cmd/lazarette`](cmd/lazarette) | The program: flags and `LAZARETTE_*` env configuration, HTTP server, scheduled garbage collection, startup and shutdown. |
 | [`cmd/lazarette-bootstrap`](cmd/lazarette-bootstrap) | Offline OCI Image Layout tarball packager, direct Lazarette pusher, and pure-stdlib ECDSA P-256 `cosign` signer. |
