@@ -149,9 +149,20 @@ func TestKoAndKubernetesManifests(t *testing.T) {
 	if !basePin.MatchString(ko) {
 		t.Fatalf(".ko.yaml must pin defaultBaseImage by sha256 digest:\n%s", ko)
 	}
-	for _, want := range []string{"linux/arm64", "main: ./cmd/lazarette", "CGO_ENABLED=0", "-trimpath"} {
+	for _, want := range []string{"linux/arm64", "main: ./cmd/lazarette", "main: ./cmd/lazarette-backup", "CGO_ENABLED=0", "-trimpath"} {
 		if !strings.Contains(ko, want) {
 			t.Errorf(".ko.yaml missing %q", want)
+		}
+	}
+
+	prioBytes, err := os.ReadFile(filepath.Join("deploy", "priorityclass.yaml"))
+	if err != nil {
+		t.Fatalf("read deploy/priorityclass.yaml: %v", err)
+	}
+	prio := string(prioBytes)
+	for _, want := range []string{"kind: PriorityClass", "name: clearedstack-high", "value: 100000", "preemptionPolicy: PreemptLowerPriority"} {
+		if !strings.Contains(prio, want) {
+			t.Errorf("deploy/priorityclass.yaml missing %q", want)
 		}
 	}
 
@@ -170,6 +181,7 @@ func TestKoAndKubernetesManifests(t *testing.T) {
 		"kind: Service",
 		"kind: Deployment",
 		"namespace: clearedstack",
+		"priorityClassName: clearedstack-high",
 		"automountServiceAccountToken: false",
 		"runAsNonRoot: true",
 		"readOnlyRootFilesystem: true",
@@ -194,6 +206,45 @@ func TestKoAndKubernetesManifests(t *testing.T) {
 		t.Error("deploy/lazarette.yaml must not contain or reference embedded secrets")
 	}
 
+	backupBytes, err := os.ReadFile(filepath.Join("deploy", "backup-cronjob.yaml"))
+	if err != nil {
+		t.Fatalf("read deploy/backup-cronjob.yaml: %v", err)
+	}
+	backup := string(backupBytes)
+	backupImgPin := regexp.MustCompile(`(?m)^\s*image:\s+lazarette\.clearedstack\.svc\.cluster\.local:5000/lazarette-backup@sha256:[0-9a-f]{64}\s*$`)
+	if len(backupImgPin.FindAllString(backup, -1)) < 2 {
+		t.Fatalf("deploy/backup-cronjob.yaml must pin lazarette-backup image by sha256 digest in both CronJobs")
+	}
+	requiredBackupSnippets := []string{
+		"kind: CronJob",
+		"name: lazarette-backup",
+		"name: lazarette-restore-drill",
+		"namespace: clearedstack",
+		"priorityClassName: cs-build-low",
+		"automountServiceAccountToken: false",
+		"runAsNonRoot: true",
+		"readOnlyRootFilesystem: true",
+		"allowPrivilegeEscalation: false",
+		`drop: ["ALL"]`,
+		"type: RuntimeDefault",
+		"key: kubernetes.io/arch",
+		`values: ["arm64"]`,
+		"key: kubernetes.io/hostname",
+		`values: ["cm3588-plus"]`,
+		"operator: NotIn",
+		"claimName: lazarette-data",
+		"readOnly: true",
+		"memory: 64Mi",
+	}
+	for _, want := range requiredBackupSnippets {
+		if !strings.Contains(backup, want) {
+			t.Errorf("deploy/backup-cronjob.yaml missing %q", want)
+		}
+	}
+	if strings.Contains(backup, "kind: Secret") || strings.Contains(backup, "secretKeyRef") {
+		t.Error("deploy/backup-cronjob.yaml must not contain or reference embedded secrets")
+	}
+
 	netpolBytes, err := os.ReadFile(filepath.Join("deploy", "networkpolicy.yaml"))
 	if err != nil {
 		t.Fatalf("read deploy/networkpolicy.yaml: %v", err)
@@ -215,6 +266,25 @@ func TestKoAndKubernetesManifests(t *testing.T) {
 	for _, want := range requiredNetpolSnippets {
 		if !strings.Contains(netpol, want) {
 			t.Errorf("deploy/networkpolicy.yaml missing %q", want)
+		}
+	}
+
+	kustBytes, err := os.ReadFile("kustomization.yaml")
+	if err != nil {
+		t.Fatalf("read kustomization.yaml: %v", err)
+	}
+	kust := string(kustBytes)
+	deployEntries, err := os.ReadDir("deploy")
+	if err != nil {
+		t.Fatalf("read deploy directory: %v", err)
+	}
+	for _, e := range deployEntries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
+			continue
+		}
+		rel := "deploy/" + e.Name()
+		if !strings.Contains(kust, "- "+rel) {
+			t.Errorf("kustomization.yaml does not list %s", rel)
 		}
 	}
 }

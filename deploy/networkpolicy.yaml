@@ -1,5 +1,8 @@
 # Default-deny policy for the clearedstack namespace (matches logbook/deploy)
-# plus the explicit ingress rule Lazarette needs.
+# plus the explicit ingress rule Lazarette needs. Ephemeral lazarette-backup
+# and lazarette-restore-drill CronJob pods match no allow policy by default, so
+# both ingress and egress remain closed unless an operator adds an explicit
+# egress policy for an off-node backup endpoint.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

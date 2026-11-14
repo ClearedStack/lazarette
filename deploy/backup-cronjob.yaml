@@ -1,0 +1,193 @@
+# Nightly verified snapshot and monthly isolated restore drill for Lazarette's
+# Longhorn ReadWriteOnce volume (SPEC.md: Failure Modes & Recovery).
+#
+# No secrets are stored in Git. By default, lazarette-backup runs with zero
+# network access under clearedstack's default-deny NetworkPolicy, verifying the
+# sha256 digest of every committed blob and manifest on the read-only PVC mount
+# and writing a deterministic snapshot to /scratch. To ship archives off-node,
+# mount an in-cluster or sealed Secret at runtime, pass -upload-url and
+# -upload-token-file, and add an explicit egress NetworkPolicy for the target.
+#
+# Replace the placeholder sha256 digest below with the signed lazarette-backup
+# image digest pushed to Lazarette before applying to the cluster.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: lazarette-backup
+  namespace: clearedstack
+  labels:
+    app.kubernetes.io/name: lazarette-backup
+    app.kubernetes.io/part-of: clearedstack
+spec:
+  schedule: "0 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 900
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: lazarette-backup
+            app.kubernetes.io/part-of: clearedstack
+        spec:
+          automountServiceAccountToken: false
+          priorityClassName: cs-build-low
+          restartPolicy: Never
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: kubernetes.io/arch
+                        operator: In
+                        values: ["arm64"]
+                      - key: kubernetes.io/hostname
+                        operator: NotIn
+                        values: ["cm3588-plus"]
+            # Co-locate on the node holding the ReadWriteOnce lazarette-data
+            # volume so the pod can mount it read-only alongside Lazarette.
+            podAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: lazarette
+                  topologyKey: kubernetes.io/hostname
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: backup
+              image: lazarette.clearedstack.svc.cluster.local:5000/lazarette-backup@sha256:0000000000000000000000000000000000000000000000000000000000000000
+              imagePullPolicy: IfNotPresent
+              args:
+                - snapshot
+                - -data=/var/lib/lazarette/registry
+                - -out=/scratch/lazarette-snapshot.tar.gz
+                - -scratch=/scratch
+              env:
+                - name: GOMEMLIMIT
+                  value: 52MiB
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 64Mi
+              securityContext:
+                privileged: false
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: data
+                  mountPath: /var/lib/lazarette
+                  readOnly: true
+                - name: scratch
+                  mountPath: /scratch
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: lazarette-data
+                readOnly: true
+            - name: scratch
+              emptyDir:
+                sizeLimit: 1Gi
+---
+# Monthly restore drill: snapshots the read-only PVC and unpacks it into an
+# isolated scratch emptyDir with zero network access, recomputing every blob
+# and manifest sha256 digest and verifying every index and descriptor pointer.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: lazarette-restore-drill
+  namespace: clearedstack
+  labels:
+    app.kubernetes.io/name: lazarette-restore-drill
+    app.kubernetes.io/part-of: clearedstack
+spec:
+  schedule: "0 4 1 * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 900
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: lazarette-restore-drill
+            app.kubernetes.io/part-of: clearedstack
+        spec:
+          automountServiceAccountToken: false
+          priorityClassName: cs-build-low
+          restartPolicy: Never
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: kubernetes.io/arch
+                        operator: In
+                        values: ["arm64"]
+                      - key: kubernetes.io/hostname
+                        operator: NotIn
+                        values: ["cm3588-plus"]
+            podAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: lazarette
+                  topologyKey: kubernetes.io/hostname
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: restore-drill
+              image: lazarette.clearedstack.svc.cluster.local:5000/lazarette-backup@sha256:0000000000000000000000000000000000000000000000000000000000000000
+              imagePullPolicy: IfNotPresent
+              args:
+                - drill
+                - -data=/var/lib/lazarette/registry
+                - -scratch=/scratch
+              env:
+                - name: GOMEMLIMIT
+                  value: 52MiB
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 64Mi
+              securityContext:
+                privileged: false
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: data
+                  mountPath: /var/lib/lazarette
+                  readOnly: true
+                - name: scratch
+                  mountPath: /scratch
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: lazarette-data
+                readOnly: true
+            - name: scratch
+              emptyDir:
+                sizeLimit: 1Gi
