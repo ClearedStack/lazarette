@@ -1,0 +1,44 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go-tests:
+    name: Go fmt, vet, race, arm64 static build and fuzz smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "Unformatted Go files:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Run go vet and go test -race
+        run: |
+          go vet ./...
+          go test -v -race -count=1 ./...
+
+      - name: Cross-compile static linux/arm64 binaries
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" ./...
+
+      - name: Run fuzz smoke passes
+        run: |
+          go test ./internal/registry -run=^$ -fuzz=^FuzzParseRouteAndRange$ -fuzztime=3s
+          go test ./internal/registry -run=^$ -fuzz=^FuzzManifestValidation$ -fuzztime=3s

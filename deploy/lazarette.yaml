@@ -7,9 +7,6 @@
 # imagePullPolicy: IfNotPresent, containerd starts Lazarette from its local
 # store without contacting the registry first. Subsequent releases are built,
 # cosign-signed, and pushed into Lazarette by Keelworks.
-#
-# The name of the "High (Control Plane)" PriorityClass is not yet fixed across
-# the cluster manifests and is omitted here until the cluster defines it.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -77,6 +74,7 @@ spec:
         app.kubernetes.io/name: lazarette
         app.kubernetes.io/part-of: clearedstack
     spec:
+      priorityClassName: clearedstack-high
       serviceAccountName: lazarette
       automountServiceAccountToken: false
       affinity:

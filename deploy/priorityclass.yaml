@@ -1,0 +1,12 @@
+# Control-plane services stay running when node memory is short.
+# Matches clearedstack-high in ClearedStack/logbook and ClearedStack/plainforge.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: clearedstack-high
+  labels:
+    app.kubernetes.io/part-of: clearedstack
+value: 100000
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: "Control-plane services in clearedstack protected from eviction."

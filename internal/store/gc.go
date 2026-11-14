@@ -272,7 +272,10 @@ func (s *Store) CollectGarbage(now time.Time, grace time.Duration) (GCStats, err
 }
 
 func (s *Store) discoverReposLocked() ([]string, error) {
-	base := filepath.Join(s.root, manifestsDir)
+	return discoverRepos(filepath.Join(s.root, manifestsDir))
+}
+
+func discoverRepos(base string) ([]string, error) {
 	seen := map[string]bool{}
 	err := filepath.WalkDir(base, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
