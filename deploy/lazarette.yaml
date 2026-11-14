@@ -1,0 +1,150 @@
+# Lazarette: internal-only OCI v2 image store in the clearedstack namespace.
+#
+# Bootstrap note: Lazarette stores container images for the cluster, so its own
+# initial image is built with ko into an OCI tarball, imported into containerd
+# on the arm64 k3s node (`k3s ctr images import`), and pinned below in place of
+# the zero bootstrap placeholder digest before applying this manifest. With
+# imagePullPolicy: IfNotPresent, containerd starts Lazarette from its local
+# store without contacting the registry first. Subsequent releases are built,
+# cosign-signed, and pushed into Lazarette by Keelworks.
+#
+# The name of the "High (Control Plane)" PriorityClass is not yet fixed across
+# the cluster manifests and is omitted here until the cluster defines it.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: lazarette
+  namespace: clearedstack
+  labels:
+    app.kubernetes.io/name: lazarette
+    app.kubernetes.io/part-of: clearedstack
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lazarette-data
+  namespace: clearedstack
+  labels:
+    app.kubernetes.io/name: lazarette
+    app.kubernetes.io/part-of: clearedstack
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 4Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lazarette
+  namespace: clearedstack
+  labels:
+    app.kubernetes.io/name: lazarette
+    app.kubernetes.io/part-of: clearedstack
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: lazarette
+  ports:
+    - name: http
+      protocol: TCP
+      port: 5000
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lazarette
+  namespace: clearedstack
+  labels:
+    app.kubernetes.io/name: lazarette
+    app.kubernetes.io/part-of: clearedstack
+    app.kubernetes.io/version: v0.1.0-draft
+spec:
+  replicas: 1
+  # One writer on the ReadWriteOnce volume: stop the old pod before starting
+  # the new one so upload locks and repository indexes have a single owner.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: lazarette
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: lazarette
+        app.kubernetes.io/part-of: clearedstack
+    spec:
+      serviceAccountName: lazarette
+      automountServiceAccountToken: false
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/arch
+                    operator: In
+                    values: ["arm64"]
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values: ["cm3588-plus"]
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: lazarette
+          image: lazarette.clearedstack.svc.cluster.local:5000/lazarette@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          imagePullPolicy: IfNotPresent
+          args:
+            - -addr=0.0.0.0:5000
+            # Store registry state in a directory below the volume mount so
+            # ext4 lost+found on the Longhorn volume stays outside the store.
+            - -data=/var/lib/lazarette/registry
+            - -idle-timeout=30s
+            - -gc-interval=24h
+            - -gc-grace=1h
+          env:
+            - name: GOMEMLIMIT
+              value: 52MiB
+          ports:
+            - name: http
+              containerPort: 5000
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /v2/
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /v2/
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 64Mi
+          securityContext:
+            privileged: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/lazarette
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: lazarette-data

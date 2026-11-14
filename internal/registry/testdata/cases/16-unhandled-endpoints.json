@@ -1,38 +1,10 @@
 {
-  "rule": "Endpoints and methods outside this milestone are valid and unfamiliar: E_NEEDS_SUBTOOL. Nothing is guessed.",
+  "rule": "Endpoints and methods outside the specification are valid and unfamiliar: E_NEEDS_SUBTOOL. Nothing is guessed.",
   "steps": [
     {
       "request": {
         "method": "GET",
-        "path": "/v2/apps/example/tags/list"
-      },
-      "response": {
-        "status": 404,
-        "headers": {
-          "Content-Length": "118",
-          "Content-Type": "application/json"
-        },
-        "body": "{\"errors\":[{\"code\":\"UNSUPPORTED\",\"message\":\"this endpoint is not handled\",\"detail\":{\"lazarette\":\"E_NEEDS_SUBTOOL\"}}]}\n"
-      }
-    },
-    {
-      "request": {
-        "method": "GET",
         "path": "/v2/_catalog"
-      },
-      "response": {
-        "status": 404,
-        "headers": {
-          "Content-Length": "118",
-          "Content-Type": "application/json"
-        },
-        "body": "{\"errors\":[{\"code\":\"UNSUPPORTED\",\"message\":\"this endpoint is not handled\",\"detail\":{\"lazarette\":\"E_NEEDS_SUBTOOL\"}}]}\n"
-      }
-    },
-    {
-      "request": {
-        "method": "GET",
-        "path": "/v2/apps/example/referrers/sha256:c70503b35fd76637bf5fb5723feac32b1f8e5c6dbcea5b7009152d7ee6e17d2c"
       },
       "response": {
         "status": 404,
@@ -113,6 +85,51 @@
         "status": 405,
         "headers": {
           "Allow": "POST",
+          "Content-Length": "133",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"UNSUPPORTED\",\"message\":\"this method is not handled on this endpoint\",\"detail\":{\"lazarette\":\"E_NEEDS_SUBTOOL\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v2/apps/example/referrers/sha256:c70503b35fd76637bf5fb5723feac32b1f8e5c6dbcea5b7009152d7ee6e17d2c"
+      },
+      "response": {
+        "status": 405,
+        "headers": {
+          "Allow": "GET, HEAD",
+          "Content-Length": "133",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"UNSUPPORTED\",\"message\":\"this method is not handled on this endpoint\",\"detail\":{\"lazarette\":\"E_NEEDS_SUBTOOL\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/tags/list"
+      },
+      "response": {
+        "status": 405,
+        "headers": {
+          "Allow": "GET, HEAD",
+          "Content-Length": "133",
+          "Content-Type": "application/json"
+        },
+        "body": "{\"errors\":[{\"code\":\"UNSUPPORTED\",\"message\":\"this method is not handled on this endpoint\",\"detail\":{\"lazarette\":\"E_NEEDS_SUBTOOL\"}}]}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "path": "/v2/apps/example/digests/list"
+      },
+      "response": {
+        "status": 405,
+        "headers": {
+          "Allow": "GET, HEAD",
           "Content-Length": "133",
           "Content-Type": "application/json"
         },

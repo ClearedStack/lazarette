@@ -1,5 +1,5 @@
 {
-  "rule": "Manifests are addressed by sha256 digest only. A tag is valid and unfamiliar: E_NEEDS_SUBTOOL, for push and for pull.",
+  "rule": "Image manifests are addressed by sha256 digest only; general tag references such as latest or v1.2.3 are valid and unfamiliar (E_NEEDS_SUBTOOL), for push and for pull.",
   "steps": [
     {
       "note": "setup: push config.json in one request",

@@ -3,36 +3,45 @@ package store
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"sync"
 )
+
+// MaxRetainedDigests is the number of signed image digests kept per app for
+// rollback.
+const MaxRetainedDigests = 5
 
 // Layout under the storage root. Every write happens below the root, so the
 // rest of the filesystem can be read-only.
 //
 //	blobs/sha256/<hex>               committed blobs (layers and configs)
 //	manifests/<repo>/_sha256/<hex>   committed manifests, per repository
+//	manifests/<repo>/_index.json     retained signed digests, .sig tags and referrers
 //	uploads/<id>                     blob upload sessions in progress
 //	tmp/                             files being written before an atomic rename
 //
 // A repository name component can never start with an underscore, so
-// "_sha256" cannot collide with a repository path.
+// "_sha256" and "_index.json" cannot collide with a repository path.
 const (
 	blobsDir     = "blobs/sha256"
 	manifestsDir = "manifests"
 	uploadsDir   = "uploads"
 	tmpDir       = "tmp"
 	manifestLeaf = "_sha256"
+	indexFile    = "_index.json"
 )
 
 var (
-	// ErrNotFound means the blob, manifest or upload session does not exist.
+	// ErrNotFound means the blob, manifest, repository or upload session does not exist.
 	ErrNotFound = errors.New("not found")
 	// ErrExists means an upload session with that identifier already exists.
 	ErrExists = errors.New("already exists")
@@ -53,11 +62,45 @@ type BodyError struct{ Err error }
 func (e *BodyError) Error() string { return "reading incoming data: " + e.Err.Error() }
 func (e *BodyError) Unwrap() error { return e.Err }
 
+// ReferrerEntry is one OCI v1.1 referrer descriptor stored for a subject.
+type ReferrerEntry struct {
+	MediaType    string            `json:"mediaType"`
+	Digest       string            `json:"digest"`
+	Size         int64             `json:"size"`
+	ArtifactType string            `json:"artifactType,omitempty"`
+	Annotations  map[string]string `json:"annotations,omitempty"`
+}
+
+// ManifestOptions carries optional index updates committed alongside a manifest.
+type ManifestOptions struct {
+	// Tag binds a cosign signature tag ("sha256-<hex>.sig") in the repository
+	// to the manifest digest being stored.
+	Tag string
+	// Subject and Referrer record the stored manifest in the repository's
+	// referrers list for Subject.
+	Subject  *Digest
+	Referrer *ReferrerEntry
+	// SignedSubject records *SignedSubject in the repository's 5-digest
+	// signed retention window (oldest first, newest last).
+	SignedSubject *Digest
+}
+
+type repoIndex struct {
+	Retained  []string                   `json:"retained,omitempty"`
+	Tags      map[string]string          `json:"tags,omitempty"`
+	Referrers map[string][]ReferrerEntry `json:"referrers,omitempty"`
+}
+
 var uploadID = regexp.MustCompile(`^[a-f0-9]{32}$`)
 
 // Store is a disk-backed, content-addressed store.
 type Store struct {
 	root string
+
+	// stateMu coordinates commits, index reads/writes and garbage collection.
+	// Network body reads happen outside stateMu so a slow client never blocks
+	// other requests.
+	stateMu sync.RWMutex
 
 	mu    sync.Mutex
 	locks map[string]*uploadLock
@@ -92,8 +135,16 @@ func (s *Store) blobPath(d Digest) string {
 	return filepath.Join(s.root, blobsDir, d.Hex())
 }
 
+func (s *Store) repoDir(repo string) string {
+	return filepath.Join(s.root, manifestsDir, filepath.FromSlash(repo))
+}
+
 func (s *Store) manifestPath(repo string, d Digest) string {
-	return filepath.Join(s.root, manifestsDir, filepath.FromSlash(repo), manifestLeaf, d.Hex())
+	return filepath.Join(s.repoDir(repo), manifestLeaf, d.Hex())
+}
+
+func (s *Store) indexPath(repo string) string {
+	return filepath.Join(s.repoDir(repo), indexFile)
 }
 
 func (s *Store) uploadPath(id string) string {
@@ -109,6 +160,9 @@ func notFound(err error) error {
 
 // BlobSize returns the size of a committed blob.
 func (s *Store) BlobSize(d Digest) (int64, error) {
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+
 	info, err := os.Stat(s.blobPath(d))
 	if err != nil {
 		return 0, notFound(err)
@@ -118,6 +172,9 @@ func (s *Store) BlobSize(d Digest) (int64, error) {
 
 // OpenBlob opens a committed blob for reading. The caller closes it.
 func (s *Store) OpenBlob(d Digest) (*os.File, int64, error) {
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+
 	f, err := os.Open(s.blobPath(d))
 	if err != nil {
 		return nil, 0, notFound(err)
@@ -152,11 +209,20 @@ func (s *Store) lockUpload(id string) func() {
 	}
 }
 
+func (s *Store) hasActiveUploadLock(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.locks[id] != nil
+}
+
 // NewUpload starts an empty upload session with the given identifier.
 func (s *Store) NewUpload(id string) error {
 	if !uploadID.MatchString(id) {
 		return ErrBadID
 	}
+	unlock := s.lockUpload(id)
+	defer unlock()
+
 	f, err := os.OpenFile(s.uploadPath(id), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o640)
 	if err != nil {
 		if errors.Is(err, fs.ErrExist) {
@@ -172,6 +238,9 @@ func (s *Store) UploadSize(id string) (int64, error) {
 	if !uploadID.MatchString(id) {
 		return 0, ErrNotFound
 	}
+	unlock := s.lockUpload(id)
+	defer unlock()
+
 	info, err := os.Stat(s.uploadPath(id))
 	if err != nil {
 		return 0, notFound(err)
@@ -264,6 +333,9 @@ func (s *Store) CommitUpload(id string, d Digest) error {
 	unlock := s.lockUpload(id)
 	defer unlock()
 
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
+
 	path := s.uploadPath(id)
 	f, err := os.Open(path)
 	if err != nil {
@@ -291,17 +363,90 @@ func (s *Store) CommitUpload(id string, d Digest) error {
 }
 
 // PutManifest stores manifest bytes for a repository after checking they
-// hash to d. The manifest becomes visible only once it is fully on disk.
-func (s *Store) PutManifest(repo string, d Digest, data []byte) error {
+// hash to d, and atomically applies any index updates in opts.
+func (s *Store) PutManifest(repo string, d Digest, data []byte, opts ManifestOptions) error {
 	sum := sha256.Sum256(data)
 	if hex.EncodeToString(sum[:]) != d.Hex() {
 		return ErrDigestMismatch
 	}
+
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
+
 	final := s.manifestPath(repo, d)
 	if err := os.MkdirAll(filepath.Dir(final), 0o750); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Join(s.root, tmpDir), "manifest-")
+	if err := s.writeAtomic(final, data, 0o440); err != nil {
+		return err
+	}
+
+	if opts.Tag == "" && (opts.Subject == nil || opts.Referrer == nil) && opts.SignedSubject == nil {
+		return nil
+	}
+
+	idx, err := s.readIndexLocked(repo)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	if opts.Tag != "" {
+		if idx.Tags == nil {
+			idx.Tags = map[string]string{}
+		}
+		idx.Tags[opts.Tag] = d.String()
+	}
+	if opts.Subject != nil && opts.Referrer != nil {
+		if idx.Referrers == nil {
+			idx.Referrers = map[string][]ReferrerEntry{}
+		}
+		subj := opts.Subject.String()
+		entry := cloneReferrer(*opts.Referrer)
+		list := idx.Referrers[subj]
+		replaced := false
+		for i := range list {
+			if list[i].Digest == entry.Digest {
+				list[i] = entry
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			list = append(list, entry)
+		}
+		idx.Referrers[subj] = list
+	}
+	if opts.SignedSubject != nil {
+		idx.Retained = retainDigest(idx.Retained, opts.SignedSubject.String())
+	}
+	return s.writeIndexLocked(repo, idx)
+}
+
+func retainDigest(list []string, digest string) []string {
+	out := make([]string, 0, len(list)+1)
+	for _, existing := range list {
+		if existing != digest {
+			out = append(out, existing)
+		}
+	}
+	out = append(out, digest)
+	if len(out) > MaxRetainedDigests {
+		out = out[len(out)-MaxRetainedDigests:]
+	}
+	return out
+}
+
+func cloneReferrer(r ReferrerEntry) ReferrerEntry {
+	out := r
+	if len(r.Annotations) > 0 {
+		out.Annotations = maps.Clone(r.Annotations)
+	} else {
+		out.Annotations = nil
+	}
+	return out
+}
+
+func (s *Store) writeAtomic(final string, data []byte, mode fs.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Join(s.root, tmpDir), "write-")
 	if err != nil {
 		return err
 	}
@@ -317,7 +462,7 @@ func (s *Store) PutManifest(repo string, d Digest, data []byte) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.Chmod(tmp.Name(), 0o440); err != nil {
+	if err := os.Chmod(tmp.Name(), mode); err != nil {
 		return err
 	}
 	if err := os.Rename(tmp.Name(), final); err != nil {
@@ -326,13 +471,186 @@ func (s *Store) PutManifest(repo string, d Digest, data []byte) error {
 	return syncDir(filepath.Dir(final))
 }
 
+func (s *Store) readIndexLocked(repo string) (repoIndex, error) {
+	var idx repoIndex
+	raw, err := os.ReadFile(s.indexPath(repo))
+	if err != nil {
+		return idx, err
+	}
+	if err := json.Unmarshal(raw, &idx); err != nil {
+		return repoIndex{}, err
+	}
+	return idx, nil
+}
+
+func (s *Store) writeIndexLocked(repo string, idx repoIndex) error {
+	if len(idx.Tags) == 0 {
+		idx.Tags = nil
+	}
+	if len(idx.Referrers) == 0 {
+		idx.Referrers = nil
+	}
+	if len(idx.Retained) == 0 {
+		idx.Retained = nil
+	}
+	raw, err := json.MarshalIndent(idx, "", "  ")
+	if err != nil {
+		return err
+	}
+	raw = append(raw, '\n')
+	if err := os.MkdirAll(s.repoDir(repo), 0o750); err != nil {
+		return err
+	}
+	return s.writeAtomic(s.indexPath(repo), raw, 0o640)
+}
+
 // GetManifest returns the stored bytes of a manifest in a repository.
 func (s *Store) GetManifest(repo string, d Digest) ([]byte, error) {
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+
 	data, err := os.ReadFile(s.manifestPath(repo, d))
 	if err != nil {
 		return nil, notFound(err)
 	}
 	return data, nil
+}
+
+// ResolveTag resolves a stored signature tag in repo to its manifest digest
+// and raw bytes.
+func (s *Store) ResolveTag(repo, tag string) (Digest, []byte, error) {
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+
+	idx, err := s.readIndexLocked(repo)
+	if err != nil {
+		return Digest{}, nil, notFound(err)
+	}
+	target, ok := idx.Tags[tag]
+	if !ok {
+		return Digest{}, nil, ErrNotFound
+	}
+	d, err := ParseDigest(target)
+	if err != nil {
+		return Digest{}, nil, err
+	}
+	data, err := os.ReadFile(s.manifestPath(repo, d))
+	if err != nil {
+		return Digest{}, nil, notFound(err)
+	}
+	return d, data, nil
+}
+
+// IsTagTarget reports whether d is currently stored as the signature manifest
+// of any tag in repo.
+func (s *Store) IsTagTarget(repo string, d Digest) (bool, error) {
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+
+	idx, err := s.readIndexLocked(repo)
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	want := d.String()
+	for _, target := range idx.Tags {
+		if target == want {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (s *Store) hasRepoLocked(repo string) (bool, error) {
+	entries, err := os.ReadDir(filepath.Join(s.repoDir(repo), manifestLeaf))
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return len(entries) > 0, nil
+}
+
+// ListTags returns the sorted signature tags stored in repo, or ErrNotFound if
+// repo holds no manifests.
+func (s *Store) ListTags(repo string) ([]string, error) {
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+
+	exists, err := s.hasRepoLocked(repo)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, ErrNotFound
+	}
+	idx, err := s.readIndexLocked(repo)
+	if errors.Is(err, fs.ErrNotExist) {
+		return []string{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	tags := make([]string, 0, len(idx.Tags))
+	for t := range idx.Tags {
+		tags = append(tags, t)
+	}
+	sort.Strings(tags)
+	return tags, nil
+}
+
+// ListRetainedDigests returns the retained signed image digests for repo in
+// oldest-to-newest order (at most MaxRetainedDigests), or ErrNotFound if repo
+// holds no manifests.
+func (s *Store) ListRetainedDigests(repo string) ([]string, error) {
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+
+	exists, err := s.hasRepoLocked(repo)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, ErrNotFound
+	}
+	idx, err := s.readIndexLocked(repo)
+	if errors.Is(err, fs.ErrNotExist) {
+		return []string{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, len(idx.Retained))
+	copy(out, idx.Retained)
+	return out, nil
+}
+
+// ListReferrers returns the stored OCI v1.1 referrers for subject in repo,
+// optionally filtered by artifactType. An unknown repository or subject yields
+// an empty slice, matching the OCI distribution specification.
+func (s *Store) ListReferrers(repo string, subject Digest, artifactType string) ([]ReferrerEntry, error) {
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+
+	idx, err := s.readIndexLocked(repo)
+	if errors.Is(err, fs.ErrNotExist) {
+		return []ReferrerEntry{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	src := idx.Referrers[subject.String()]
+	out := make([]ReferrerEntry, 0, len(src))
+	for _, r := range src {
+		if artifactType != "" && r.ArtifactType != artifactType {
+			continue
+		}
+		out = append(out, cloneReferrer(r))
+	}
+	return out, nil
 }
 
 func syncDir(dir string) error {

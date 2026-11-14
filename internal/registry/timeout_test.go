@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/clearedstack/lazarette/internal/store"
+	"github.com/ClearedStack/lazarette/internal/store"
 )
 
 const stalledBlob = "sha256:5e930cbbf825c94c16e1bc9392c3cb32c38e07925d71cc7dea08d6e8745b5cb7"

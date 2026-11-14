@@ -8,13 +8,16 @@ import (
 type routeKind int
 
 const (
-	routeUnknown  routeKind = iota
-	routeBase               // /v2/
-	routeBlob               // /v2/<name>/blobs/<digest>
-	routeUploads            // /v2/<name>/blobs/uploads/
-	routeUpload             // /v2/<name>/blobs/uploads/<id>
-	routeManifest           // /v2/<name>/manifests/<reference>
-	routeBadName            // one of the above with an invalid <name>
+	routeUnknown     routeKind = iota
+	routeBase                  // /v2/
+	routeBlob                  // /v2/<name>/blobs/<digest>
+	routeUploads               // /v2/<name>/blobs/uploads/
+	routeUpload                // /v2/<name>/blobs/uploads/<id>
+	routeManifest              // /v2/<name>/manifests/<reference>
+	routeReferrers             // /v2/<name>/referrers/<digest>
+	routeTagsList              // /v2/<name>/tags/list
+	routeDigestsList           // /v2/<name>/digests/list
+	routeBadName               // one of the above with an invalid <name>
 )
 
 func (k routeKind) String() string {
@@ -29,6 +32,12 @@ func (k routeKind) String() string {
 		return "upload"
 	case routeManifest:
 		return "manifest"
+	case routeReferrers:
+		return "referrers"
+	case routeTagsList:
+		return "tags-list"
+	case routeDigestsList:
+		return "digests-list"
 	case routeBadName:
 		return "bad-name"
 	}
@@ -67,6 +76,12 @@ func parseRoute(path string) route {
 		rt = route{kind: routeUploads, repo: repo}
 	} else if repo, ref, ok := cutLast(rest, "/blobs/uploads/"); ok {
 		rt = route{kind: routeUpload, repo: repo, ref: ref}
+	} else if repo, ok := strings.CutSuffix(rest, "/tags/list"); ok {
+		rt = route{kind: routeTagsList, repo: repo}
+	} else if repo, ok := strings.CutSuffix(rest, "/digests/list"); ok {
+		rt = route{kind: routeDigestsList, repo: repo}
+	} else if repo, ref, ok := cutLast(rest, "/referrers/"); ok {
+		rt = route{kind: routeReferrers, repo: repo, ref: ref}
 	} else if repo, ref, ok := cutLast(rest, "/manifests/"); ok {
 		rt = route{kind: routeManifest, repo: repo, ref: ref}
 	} else if repo, ref, ok := cutLast(rest, "/blobs/"); ok {

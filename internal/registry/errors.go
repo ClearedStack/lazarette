@@ -28,6 +28,8 @@ type refusal struct {
 var (
 	errNameInvalid = refusal{http.StatusBadRequest, "NAME_INVALID", codeParse,
 		"repository name is not a valid OCI repository name"}
+	errRepoUnknown = refusal{http.StatusNotFound, "NAME_UNKNOWN", "",
+		"repository is not known"}
 	errDigestMalformed = refusal{http.StatusBadRequest, "DIGEST_INVALID", codeParse,
 		"digest is malformed; expected sha256 followed by 64 lower-case hex characters"}
 	errDigestUnfamiliar = refusal{http.StatusBadRequest, "UNSUPPORTED", codeNeedsSubtool,
@@ -66,16 +68,34 @@ var (
 	errManifestTypeConflict = refusal{http.StatusBadRequest, "MANIFEST_INVALID", codeParse,
 		"manifest mediaType field and Content-Type header disagree"}
 	errManifestUnfamiliar = refusal{http.StatusUnsupportedMediaType, "UNSUPPORTED", codeNeedsSubtool,
-		"manifest media type is not application/vnd.oci.image.manifest.v1+json, the only type handled"}
+		"manifest media type is not an OCI image manifest or OCI image index, the only types handled"}
 	errManifestBlobUnknown = refusal{http.StatusBadRequest, "MANIFEST_BLOB_UNKNOWN", codeParse,
 		"manifest refers to a blob that has not been pushed; the manifest was not stored"}
 	errManifestBlobSize = refusal{http.StatusBadRequest, "MANIFEST_INVALID", codeParse,
 		"manifest gives a size for a blob that differs from the stored blob; the manifest was not stored"}
+	errIndexManifestUnknown = refusal{http.StatusBadRequest, "MANIFEST_BLOB_UNKNOWN", codeParse,
+		"image index refers to a manifest that has not been pushed; the index was not stored"}
+	errIndexManifestSize = refusal{http.StatusBadRequest, "MANIFEST_INVALID", codeParse,
+		"image index gives a size or media type for a manifest that differs from the stored manifest; the index was not stored"}
+	errSubjectUnknown = refusal{http.StatusBadRequest, "MANIFEST_BLOB_UNKNOWN", codeParse,
+		"manifest subject refers to a manifest that has not been pushed; the manifest was not stored"}
+	errSubjectMismatch = refusal{http.StatusBadRequest, "MANIFEST_INVALID", codeParse,
+		"manifest subject size or media type differs from the stored manifest; the manifest was not stored"}
+	errSignatureTargetUnknown = refusal{http.StatusBadRequest, "MANIFEST_BLOB_UNKNOWN", codeParse,
+		"signature tag names an image digest that has not been pushed; the signature was not stored"}
+	errSignatureTargetInvalid = refusal{http.StatusBadRequest, "MANIFEST_INVALID", codeParse,
+		"signature tag must target an image manifest or image index, not another signature or referrer"}
+	errSignatureIndexRefused = refusal{http.StatusBadRequest, "MANIFEST_INVALID", codeParse,
+		"signature tag requires an OCI image manifest, not an image index"}
+	errSignatureSubjectMismatch = refusal{http.StatusBadRequest, "MANIFEST_INVALID", codeParse,
+		"signature manifest subject does not match the digest in the signature tag"}
 	errManifestTimeout = refusal{http.StatusRequestTimeout, "MANIFEST_INVALID", codeTimeout,
 		"request body stalled for too long; the manifest was not stored"}
 	errManifestBodyBroken = refusal{http.StatusBadRequest, "MANIFEST_INVALID", codeParse,
 		"request body ended early or could not be read; the manifest was not stored"}
 
+	errReferrersQuery = refusal{http.StatusBadRequest, "UNSUPPORTED", codeParse,
+		"referrers query accepts at most one non-empty artifactType parameter"}
 	errRouteUnfamiliar = refusal{http.StatusNotFound, "UNSUPPORTED", codeNeedsSubtool,
 		"this endpoint is not handled"}
 	errMethodUnfamiliar = refusal{http.StatusMethodNotAllowed, "UNSUPPORTED", codeNeedsSubtool,
