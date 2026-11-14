@@ -42,13 +42,13 @@ go run ./cmd/lazarette \
   -gc-grace 1h
 ```
 
-Flags:
+Flags (each also configurable via environment variable when the CLI flag is omitted):
 
-- `-addr` (default `127.0.0.1:5000`): TCP address to listen on.
-- `-data` (required): directory where blobs, manifests, and upload sessions live; the only path Lazarette writes to.
-- `-idle-timeout` (default `30s`): how long a request body read may stall before the request is refused with `E_TIMEOUT`.
-- `-gc-interval` (default `24h`, `0` disables): interval between scheduled garbage collection passes.
-- `-gc-grace` (default `1h`): minimum age before unreferenced blobs, unsigned manifests, or unlocked uploads are eligible for removal.
+- `-addr` / `LAZARETTE_ADDR` (default `:5000`): TCP address to listen on.
+- `-data` / `LAZARETTE_DATA` (required): directory where blobs, manifests, and upload sessions live; the only path Lazarette writes to.
+- `-idle-timeout` / `LAZARETTE_IDLE_TIMEOUT` (default `30s`): how long a request body read may stall before the request is refused with `E_TIMEOUT`.
+- `-gc-interval` / `LAZARETTE_GC_INTERVAL` (default `24h`, `0` disables): interval between scheduled garbage collection passes.
+- `-gc-grace` / `LAZARETTE_GC_GRACE` (default `1h`): minimum age before unreferenced blobs, unsigned manifests, or unlocked uploads are eligible for removal.
 - `-version`: print `v0.1.0-draft` and exit.
 
 ### Test it
@@ -60,23 +60,24 @@ go test -race ./...
 
 The tests need no network and no external binaries or libraries:
 
-- **Saved examples** in [`internal/registry/testdata/cases`](internal/registry/testdata/cases): 24 fixture suites covering every OCI endpoint, digest rule, byte range, image index, `cosign` `.sig` tag, OCI v1.1 referrer, retained signed digest list, garbage collection pass, and fixed refusal.
-- **Loopback HTTP client tests** in [`internal/registry/client_test.go`](internal/registry/client_test.go): full push/pull/range/restart/index/`cosign`/GC flows over a real TCP socket.
+- **Saved examples** in [`internal/registry/testdata/cases`](internal/registry/testdata/cases): 25 fixture suites covering every OCI endpoint, digest rule, byte range, image index, `cosign` `.sig` tag (including OCI 1.1 referrers bridging), OCI v1.1 referrer, retained signed digest list, garbage collection pass, and fixed refusal.
+- **Loopback HTTP & Keelworks/Shipkeeper wire tests** in [`internal/registry/client_test.go`](internal/registry/client_test.go): full push/pull/range/restart/index/`cosign`/GC flows plus exact ECDSA P-256 `cosign` SimpleSigning verification and `HEAD` digest checks matching Keelworks and Shipkeeper.
+- **Offline bootstrap tarball tests** in [`internal/bootstrap/bootstrap_test.go`](internal/bootstrap/bootstrap_test.go): verifies byte-for-byte reproducibility and OCI compliance of bootstrap tarballs.
 - **Timeout tests** in [`internal/registry/timeout_test.go`](internal/registry/timeout_test.go): stalled request body reads produce `408` with `E_TIMEOUT` and leave zero committed state.
 - **Store & GC unit tests** in [`internal/store/store_test.go`](internal/store/store_test.go): atomic writes, concurrent upload locks, retention ordering, and grace-window protection.
 - **Repository & deployment contract tests** in [`imports_test.go`](imports_test.go): verifies stdlib-only imports across all Go files, module path, `component.json`, `.ko.yaml`, hardened `deploy/` manifests, and repository hygiene.
 
 ### Build & bootstrap in Kubernetes
 
-Lazarette is built straight from Go source with [`ko`](.ko.yaml) (no `Dockerfile`). Because Lazarette itself is the cluster's image registry, the very first `lazarette` image on a fresh cluster is built to an OCI tarball and imported into `k3s` `containerd` on the `arm64` node:
+Lazarette is built straight from Go source with [`ko`](.ko.yaml) (no `Dockerfile`). Because Lazarette itself is the cluster's image registry, the very first `lazarette` image on a fresh cluster is built to a deterministic OCI Image Layout tarball and imported into `k3s` `containerd` on the `arm64` node. Either `ko` or the zero-dependency [`cmd/lazarette-bootstrap`](cmd/lazarette-bootstrap) helper can produce the tarball offline:
 
 ```sh
-KO_DOCKER_REPO=lazarette.clearedstack.svc.cluster.local:5000 \
-  ko build --base-import-paths --push=false --tarball=lazarette.tar ./cmd/lazarette
-k3s ctr images import lazarette.tar
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o lazarette ./cmd/lazarette
+DIGEST=$(go run ./cmd/lazarette-bootstrap -binary ./lazarette -out ./lazarette.tar)
+k3s ctr images import ./lazarette.tar
 ```
 
-Replace the bootstrap placeholder digest in [`deploy/lazarette.yaml`](deploy/lazarette.yaml) with the imported `sha256` image digest before applying [`deploy/`](deploy). Subsequent releases are built, `cosign`-signed, and pushed into Lazarette by Keelworks.
+Replace the bootstrap placeholder digest in [`deploy/lazarette.yaml`](deploy/lazarette.yaml) with `$DIGEST` before applying [`deploy/`](deploy). Stateful control-plane services (`logbook`, `plainforge`, `lazarette`) remain managed via their `deploy/` manifests while Shipkeeper observes their running digests read-only. Subsequent releases are built, `cosign`-signed, and pushed into Lazarette by Keelworks.
 
 ### Cluster integration notes
 
@@ -97,7 +98,9 @@ Replace the bootstrap placeholder digest in [`deploy/lazarette.yaml`](deploy/laz
 | [`.ko.yaml`](.ko.yaml) | `ko` build configuration with digest-pinned static base image (`linux/arm64`). |
 | [`deploy/`](deploy) | Hardened Kubernetes manifests (`ServiceAccount`, `PersistentVolumeClaim`, `Service`, `Deployment`, and default-deny `NetworkPolicy`) for namespace `clearedstack`. |
 | [`brand/`](brand) | The Lazarette logo and mark, for light and dark backgrounds. |
-| [`cmd/lazarette`](cmd/lazarette) | The program: flags, HTTP server, scheduled garbage collection, startup and shutdown. |
+| [`cmd/lazarette`](cmd/lazarette) | The program: flags and `LAZARETTE_*` env configuration, HTTP server, scheduled garbage collection, startup and shutdown. |
+| [`cmd/lazarette-bootstrap`](cmd/lazarette-bootstrap) | Offline OCI Image Layout tarball packager for first-time `k3s ctr images import` bootstrap. |
+| [`internal/bootstrap`](internal/bootstrap) | Deterministic stdlib-only OCI Image Layout v1.0 builder. |
 | [`internal/registry`](internal/registry) | The HTTP API, its fixed refusals, and the saved examples. |
 | [`internal/store`](internal/store) | Blobs, manifests, per-repo retention/tag/referrer indexes, upload sessions, and garbage collection on disk. |
 

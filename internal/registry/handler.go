@@ -584,11 +584,13 @@ type rawManifest struct {
 }
 
 type checkedManifest struct {
-	mediaType    string
-	subject      *store.Digest
-	subjectBytes []byte
-	referrer     *store.ReferrerEntry
-	isSignature  bool
+	mediaType       string
+	subject         *store.Digest
+	subjectBytes    []byte
+	referrer        *store.ReferrerEntry
+	tagArtifactType string
+	annotations     map[string]string
+	isSignature     bool
 }
 
 func (h *Handler) putManifest(w http.ResponseWriter, r *http.Request, rt route) {
@@ -655,6 +657,16 @@ func (h *Handler) putManifest(w http.ResponseWriter, r *http.Request, rt route) 
 		target := refDigest
 		opts.Tag = sigTag
 		opts.SignedSubject = &target
+		if opts.Referrer == nil {
+			opts.Subject = &target
+			opts.Referrer = &store.ReferrerEntry{
+				MediaType:    checked.mediaType,
+				Digest:       manifestDigest.String(),
+				Size:         int64(len(data)),
+				ArtifactType: checked.tagArtifactType,
+				Annotations:  checked.annotations,
+			}
+		}
 	} else if checked.subject != nil && checked.isSignature {
 		signable, bad := h.isSignableStoredManifest(rt.repo, *checked.subject, checked.subjectBytes)
 		if bad != nil {
@@ -775,6 +787,19 @@ func (h *Handler) checkManifest(repo string, self store.Digest, data []byte, con
 	if effectiveArtifact == "" && m.Config != nil {
 		effectiveArtifact = m.Config.MediaType
 	}
+	out.tagArtifactType = m.ArtifactType
+	if out.tagArtifactType == "" && m.Layers != nil {
+		for _, layer := range *m.Layers {
+			if signatureMediaTypes[layer.MediaType] {
+				out.tagArtifactType = layer.MediaType
+				break
+			}
+		}
+	}
+	if out.tagArtifactType == "" {
+		out.tagArtifactType = effectiveArtifact
+	}
+	out.annotations = m.Annotations
 	out.isSignature = isSignatureManifest(m, effectiveArtifact)
 
 	if m.Subject != nil {

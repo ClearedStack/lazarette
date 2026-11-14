@@ -32,13 +32,19 @@ func main() {
 func run(ctx context.Context, args []string, stderr io.Writer, ready chan<- string) int {
 	logger := log.New(stderr, "lazarette ", log.LstdFlags|log.LUTC)
 
+	defaultAddr := ":5000"
+	if v := os.Getenv("LAZARETTE_ADDR"); v != "" {
+		defaultAddr = v
+	}
+	defaultData := os.Getenv("LAZARETTE_DATA")
+
 	fs := flag.NewFlagSet("lazarette", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	addr := fs.String("addr", ":5000", "address to listen on")
-	data := fs.String("data", "", "directory for blobs and manifests (required; the only place written to)")
-	idle := fs.Duration("idle-timeout", registry.DefaultIdleTimeout, "how long a request body may stall before E_TIMEOUT")
-	gcInterval := fs.Duration("gc-interval", 24*time.Hour, "how often garbage collection runs (0 disables scheduled runs)")
-	gcGrace := fs.Duration("gc-grace", time.Hour, "how long unsigned pushes and uploads are spared by garbage collection")
+	addr := fs.String("addr", defaultAddr, "address to listen on (or LAZARETTE_ADDR)")
+	data := fs.String("data", defaultData, "directory for blobs and manifests (or LAZARETTE_DATA; required)")
+	idle := fs.Duration("idle-timeout", registry.DefaultIdleTimeout, "how long a request body may stall before E_TIMEOUT (or LAZARETTE_IDLE_TIMEOUT)")
+	gcInterval := fs.Duration("gc-interval", 24*time.Hour, "how often garbage collection runs; 0 disables scheduled runs (or LAZARETTE_GC_INTERVAL)")
+	gcGrace := fs.Duration("gc-grace", time.Hour, "how long unsigned pushes and uploads are spared by garbage collection (or LAZARETTE_GC_GRACE)")
 	showVersion := fs.Bool("version", false, "print version and exit")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -47,8 +53,33 @@ func run(ctx context.Context, args []string, stderr io.Writer, ready chan<- stri
 		logger.Printf("version %s", version)
 		return 0
 	}
+
+	explicit := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { explicit[f.Name] = true })
+	for _, d := range []struct {
+		flagName string
+		envName  string
+		target   *time.Duration
+	}{
+		{"idle-timeout", "LAZARETTE_IDLE_TIMEOUT", idle},
+		{"gc-interval", "LAZARETTE_GC_INTERVAL", gcInterval},
+		{"gc-grace", "LAZARETTE_GC_GRACE", gcGrace},
+	} {
+		if explicit[d.flagName] {
+			continue
+		}
+		if raw := os.Getenv(d.envName); raw != "" {
+			parsed, err := time.ParseDuration(raw)
+			if err != nil {
+				logger.Printf("refusing to start: %s is not a valid duration: %v", d.envName, err)
+				return 2
+			}
+			*d.target = parsed
+		}
+	}
+
 	if *data == "" || fs.NArg() != 0 || *idle <= 0 || *gcInterval < 0 || *gcGrace < 0 {
-		logger.Print("refusing to start: -data is required, durations must be valid, and no extra arguments are accepted")
+		logger.Print("refusing to start: -data (or LAZARETTE_DATA) is required, durations must be valid, and no extra arguments are accepted")
 		return 2
 	}
 

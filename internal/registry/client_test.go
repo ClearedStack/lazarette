@@ -2,13 +2,20 @@ package registry
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -358,5 +365,201 @@ func TestLoopbackMutableTagPushAndPullRefused(t *testing.T) {
 	res.Body.Close()
 	if res.StatusCode != http.StatusBadRequest {
 		t.Errorf("PUT :latest status = %d, want 400", res.StatusCode)
+	}
+}
+
+// TestKeelworksAndShipkeeperWireCompatibility drives Lazarette with the exact
+// HTTP calls and ECDSA P-256 SimpleSigning verification rules used by
+// ClearedStack/keelworks (internal/lazarette) and ClearedStack/shipkeeper
+// (internal/lazarette), covering both classic cosign sha256-<hex>.sig pushes
+// and OCI 1.1 subject referrer pushes.
+func TestKeelworksAndShipkeeperWireCompatibility(t *testing.T) {
+	_, client := newTestServer(t, t.TempDir())
+
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pubDER, err := x509.MarshalPKIXPublicKey(&priv.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pubPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER})
+	block, _ := pem.Decode(pubPEM)
+	parsedPub, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub := parsedPub.(*ecdsa.PublicKey)
+
+	const (
+		simpleSigningMediaType = "application/vnd.dev.cosign.simplesigning.v1+json"
+		sigAnnotationKey       = "dev.cosignproject.cosign/signature"
+	)
+
+	// Exact verification flow from ClearedStack/keelworks/internal/lazarette.
+	keelworksVerify := func(repo, imgDigest string) bool {
+		headReq, _ := http.NewRequest(http.MethodHead, client.baseURL+"/v2/"+repo+"/manifests/"+imgDigest, nil)
+		headReq.Header.Set("Accept", MediaTypeImageManifest+", "+MediaTypeImageIndex)
+		headRes, err := client.http.Do(headReq)
+		if err != nil {
+			t.Fatal(err)
+		}
+		headRes.Body.Close()
+		if headRes.StatusCode != http.StatusOK || headRes.Header.Get("Docker-Content-Digest") != imgDigest {
+			return false
+		}
+
+		refPath := "/v2/" + repo + "/referrers/" + imgDigest + "?artifactType=" + url.QueryEscape(simpleSigningMediaType)
+		st, _, refBody := client.getBytes(refPath)
+		if st != http.StatusOK {
+			return false
+		}
+		var idx struct {
+			Manifests []struct {
+				Digest       string `json:"digest"`
+				ArtifactType string `json:"artifactType"`
+			} `json:"manifests"`
+		}
+		if err := json.Unmarshal(refBody, &idx); err != nil {
+			t.Fatal(err)
+		}
+		for _, desc := range idx.Manifests {
+			if desc.ArtifactType != "" && desc.ArtifactType != simpleSigningMediaType {
+				continue
+			}
+			mst, _, mbody := client.getBytes("/v2/" + repo + "/manifests/" + desc.Digest)
+			if mst != http.StatusOK || shaDigest(mbody) != desc.Digest {
+				continue
+			}
+			var m struct {
+				SchemaVersion int `json:"schemaVersion"`
+				Layers        []struct {
+					MediaType   string            `json:"mediaType"`
+					Digest      string            `json:"digest"`
+					Annotations map[string]string `json:"annotations"`
+				} `json:"layers"`
+			}
+			if json.Unmarshal(mbody, &m) != nil || m.SchemaVersion != 2 {
+				continue
+			}
+			for _, layer := range m.Layers {
+				if layer.MediaType != simpleSigningMediaType {
+					continue
+				}
+				sigBytes, err := base64.StdEncoding.DecodeString(layer.Annotations[sigAnnotationKey])
+				if err != nil || len(sigBytes) == 0 {
+					continue
+				}
+				bst, _, payload := client.getBytes("/v2/" + repo + "/blobs/" + layer.Digest)
+				if bst != http.StatusOK || shaDigest(payload) != layer.Digest {
+					continue
+				}
+				sum := sha256.Sum256(payload)
+				if !ecdsa.VerifyASN1(pub, sum[:], sigBytes) {
+					continue
+				}
+				var ss struct {
+					Critical struct {
+						Image struct {
+							DockerManifestDigest string `json:"docker-manifest-digest"`
+						} `json:"image"`
+						Type string `json:"type"`
+					} `json:"critical"`
+				}
+				if json.Unmarshal(payload, &ss) == nil &&
+					ss.Critical.Type == "cosign container image signature" &&
+					ss.Critical.Image.DockerManifestDigest == imgDigest {
+					return true
+				}
+			}
+		}
+		return false
+	}
+
+	// Exact HEAD check from ClearedStack/shipkeeper/internal/lazarette.
+	shipkeeperCheck := func(repo, imgDigest string) bool {
+		req, _ := http.NewRequest(http.MethodHead, client.baseURL+"/v2/"+repo+"/manifests/"+imgDigest, nil)
+		req.Header.Set("Accept", MediaTypeImageManifest+", "+MediaTypeImageIndex)
+		res, err := client.http.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		return res.StatusCode == http.StatusOK && res.Header.Get("Docker-Content-Digest") == imgDigest
+	}
+
+	makeSignedPayload := func(key *ecdsa.PrivateKey, repo, signedDigest string) (string, int, string) {
+		payload := []byte(fmt.Sprintf(
+			`{"critical":{"identity":{"docker-reference":"lazarette.clearedstack.svc.cluster.local:5000/%s"},"image":{"docker-manifest-digest":%q},"type":"cosign container image signature"},"optional":null}`,
+			repo, signedDigest,
+		))
+		sum := sha256.Sum256(payload)
+		sigASN1, err := ecdsa.SignASN1(rand.Reader, key, sum[:])
+		if err != nil {
+			t.Fatal(err)
+		}
+		blobDigest := client.pushBlobMonolithic(repo, payload)
+		return blobDigest, len(payload), base64.StdEncoding.EncodeToString(sigASN1)
+	}
+
+	// 1. Classic cosign sha256-<hex>.sig tag push (no subject field in JSON).
+	img1Digest, _, _ := buildMadeUpImage(client, "muster", "v1-binary")
+	if keelworksVerify("muster", img1Digest) {
+		t.Fatal("unsigned image verified before cosign push")
+	}
+	emptyCfg := []byte(`{}`)
+	emptyCfgDigest := client.pushBlobMonolithic("muster", emptyCfg)
+	sig1Blob, sig1Len, sig1B64 := makeSignedPayload(priv, "muster", img1Digest)
+	sig1Manifest := []byte(fmt.Sprintf(
+		`{"schemaVersion":2,"mediaType":%q,"config":{"mediaType":"application/vnd.oci.image.config.v1+json","digest":%q,"size":%d},"layers":[{"mediaType":%q,"digest":%q,"size":%d,"annotations":{%q:%q}}]}`,
+		MediaTypeImageManifest, emptyCfgDigest, len(emptyCfg),
+		simpleSigningMediaType, sig1Blob, sig1Len, sigAnnotationKey, sig1B64,
+	))
+	sig1Tag := "sha256-" + img1Digest[len("sha256:"):] + ".sig"
+	client.pushManifest("muster", sig1Tag, MediaTypeImageManifest, sig1Manifest)
+
+	if !keelworksVerify("muster", img1Digest) {
+		t.Fatal("Keelworks OCIVerifier failed to verify classic cosign .sig tag push")
+	}
+	if !shipkeeperCheck("muster", img1Digest) {
+		t.Fatal("Shipkeeper HasSignedDigest failed on classic signed image")
+	}
+
+	// 2. OCI 1.1 subject referrer push with artifactType.
+	img2Digest, img2Raw, _ := buildMadeUpImage(client, "muster", "v2-binary")
+	sig2Blob, sig2Len, sig2B64 := makeSignedPayload(priv, "muster", img2Digest)
+	sig2Manifest := []byte(fmt.Sprintf(
+		`{"schemaVersion":2,"mediaType":%q,"artifactType":%q,"config":{"mediaType":"application/vnd.oci.empty.v1+json","digest":%q,"size":%d},"layers":[{"mediaType":%q,"digest":%q,"size":%d,"annotations":{%q:%q}}],"subject":{"mediaType":%q,"digest":%q,"size":%d}}`,
+		MediaTypeImageManifest, simpleSigningMediaType, emptyCfgDigest, len(emptyCfg),
+		simpleSigningMediaType, sig2Blob, sig2Len, sigAnnotationKey, sig2B64,
+		MediaTypeImageManifest, img2Digest, len(img2Raw),
+	))
+	client.pushManifest("muster", shaDigest(sig2Manifest), MediaTypeImageManifest, sig2Manifest)
+
+	if !keelworksVerify("muster", img2Digest) {
+		t.Fatal("Keelworks OCIVerifier failed to verify OCI 1.1 subject referrer push")
+	}
+	if !shipkeeperCheck("muster", img2Digest) {
+		t.Fatal("Shipkeeper HasSignedDigest failed on OCI 1.1 signed image")
+	}
+
+	// 3. Signature signed by an unknown key is stored by OCI rules, yet
+	// Keelworks cryptographic verification rejects it cleanly.
+	wrongPriv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	img3Digest, _, _ := buildMadeUpImage(client, "muster", "v3-rogue")
+	badBlob, badLen, badB64 := makeSignedPayload(wrongPriv, "muster", img3Digest)
+	badSigManifest := []byte(fmt.Sprintf(
+		`{"schemaVersion":2,"mediaType":%q,"config":{"mediaType":"application/vnd.oci.image.config.v1+json","digest":%q,"size":%d},"layers":[{"mediaType":%q,"digest":%q,"size":%d,"annotations":{%q:%q}}]}`,
+		MediaTypeImageManifest, emptyCfgDigest, len(emptyCfg),
+		simpleSigningMediaType, badBlob, badLen, sigAnnotationKey, badB64,
+	))
+	badTag := "sha256-" + img3Digest[len("sha256:"):] + ".sig"
+	client.pushManifest("muster", badTag, MediaTypeImageManifest, badSigManifest)
+	if keelworksVerify("muster", img3Digest) {
+		t.Fatal("Keelworks OCIVerifier accepted signature from wrong ECDSA key")
 	}
 }
